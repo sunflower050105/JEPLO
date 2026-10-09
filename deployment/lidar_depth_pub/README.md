@@ -146,6 +146,8 @@ sub.setsockopt(zmq.SUBSCRIBE, b"")
 while True:
     data = sub.recv()
     w, h = struct.unpack_from("<II", data, 0)
-    depth = np.frombuffer(data, dtype=np.float32, offset=8).reshape(h, w)
+    # Message = [w][h][w*h float32][uint64 newest_scan_ns][uint64 publish_ns]
+    # (the 16-byte timestamp trailer is optional for readers; skip it with count=)
+    depth = np.frombuffer(data, dtype=np.float32, count=w * h, offset=8).reshape(h, w)
     print(f"{w}x{h}  min={depth.min():.3f}  max={depth.max():.3f}  mean={depth.mean():.3f}")
 ```

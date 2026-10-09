@@ -761,6 +761,172 @@ struct LocomotionConfig {
     }
 };
 
+inline uint64_t wall_clock_ns() {
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count());
+}
+
+// Timestamps (system_clock ns, 0 = unknown) of the depth frame handed to the sensor estimator.
+struct DepthStamps {
+    uint64_t scan_ns = 0;    // newest scan inside the frame
+    uint64_t publish_ns = 0; // publisher sent the frame
+    uint64_t recv_ns = 0;    // deploy received the frame
+    // The two frames fed to the estimator: channel 0 = "prev", channel 1 = "latest".
+    uint64_t prev_scan_ns = 0; // newest scan inside channel 0 (0 = unknown)
+    uint64_t prev_seq = 0;     // arrival sequence number of channel 0 (0 = none yet)
+    uint64_t latest_seq = 0;   // arrival sequence number of channel 1
+};
+
+/**
+ * @brief Counts control-loop, policy and sensor-estimator (JEPA) executions and logs their
+ *        rates (Hz) over a fixed wall-clock window. Also logs JEPA inference time and the
+ *        age of the depth frame JEPA consumes (consume time minus newest-scan time).
+ *        Used to verify the real-time schedule.
+ */
+class RateMonitor {
+  public:
+    // Call once per control-loop iteration.
+    void OnLoop() {
+        const auto now = std::chrono::steady_clock::now();
+        if (window_start_ == std::chrono::steady_clock::time_point{}) {
+            window_start_ = now;
+            return;
+        }
+        loop_count_++;
+        const double elapsed = std::chrono::duration<double>(now - window_start_).count();
+        if (elapsed >= kWindowSec) {
+            LOG_INFO(
+                "[RATE] loop=%.2f Hz  policy=%.2f Hz  jepa(sensor_estimator)=%.2f Hz  "
+                "(window %.2fs)",
+                loop_count_ / elapsed, policy_count_ / elapsed, estimator_count_ / elapsed,
+                elapsed);
+            LogLatency();
+            loop_count_ = 0;
+            policy_count_ = 0;
+            estimator_count_ = 0;
+            win_age_ms_.clear();
+            win_scan_to_pub_ms_.clear();
+            win_pub_to_recv_ms_.clear();
+            win_recv_to_consume_ms_.clear();
+            win_infer_ms_.clear();
+            win_spacing_ms_.clear();
+            win_pairs_ = 0;
+            win_identical_ = 0;
+            window_start_ = now;
+        }
+    }
+
+    // Call after each successful policy inference.
+    void OnPolicy() { policy_count_++; }
+
+    // Call after each successful sensor-estimator (JEPA) inference.
+    void OnEstimator() { estimator_count_++; }
+
+    // Call with the depth stamps, the time JEPA started consuming them, and the JEPA Run() time.
+    void OnEstimatorLatency(const DepthStamps &st, uint64_t consume_ns, double infer_ms) {
+        win_infer_ms_.push_back(infer_ms);
+        // Depth history pair: identical frames (same arrival) or two distinct frames?
+        win_pairs_++;
+        all_pairs_++;
+        if (st.prev_seq == st.latest_seq) {
+            win_identical_++;
+            all_identical_++;
+        } else if (st.prev_scan_ns != 0 && st.scan_ns > st.prev_scan_ns) {
+            const double spacing_ms = (st.scan_ns - st.prev_scan_ns) / 1e6;
+            win_spacing_ms_.push_back(spacing_ms);
+            all_spacing_ms_.push_back(spacing_ms);
+        }
+        if (st.scan_ns == 0 || st.scan_ns > consume_ns) {
+            return; // publisher sent no timestamp (or clocks disagree): age unknown
+        }
+        const double age_ms = (consume_ns - st.scan_ns) / 1e6;
+        win_age_ms_.push_back(age_ms);
+        all_age_ms_.push_back(age_ms);
+        if (st.publish_ns >= st.scan_ns && st.recv_ns >= st.publish_ns && consume_ns >= st.recv_ns) {
+            win_scan_to_pub_ms_.push_back((st.publish_ns - st.scan_ns) / 1e6);
+            win_pub_to_recv_ms_.push_back((st.recv_ns - st.publish_ns) / 1e6);
+            win_recv_to_consume_ms_.push_back((consume_ns - st.recv_ns) / 1e6);
+        }
+    }
+
+  private:
+    static constexpr double kWindowSec = 5.0;
+
+    static double Percentile(std::vector<double> v, double q) {
+        if (v.empty()) {
+            return 0.0;
+        }
+        const size_t k = static_cast<size_t>(q * (v.size() - 1) + 0.5);
+        std::nth_element(v.begin(), v.begin() + k, v.end());
+        return v[k];
+    }
+
+    void LogLatency() const {
+        if (win_pairs_ > 0) {
+            if (win_spacing_ms_.empty()) {
+                LOG_INFO(
+                    "[HISTORY] ViT depth pair: identical=%.0f%% (%ld/%ld)  distinct-pair spacing: "
+                    "n/a  | whole run identical=%.0f%% (%ld/%ld)",
+                    100.0 * win_identical_ / win_pairs_, win_identical_, win_pairs_,
+                    100.0 * all_identical_ / all_pairs_, all_identical_, all_pairs_);
+            } else {
+                LOG_INFO(
+                    "[HISTORY] ViT depth pair: identical=%.0f%% (%ld/%ld)  distinct-pair spacing: "
+                    "median=%.1f ms  min=%.1f  max=%.1f (n=%zu)  | whole run identical=%.0f%% "
+                    "(%ld/%ld), spacing median=%.1f ms  [training: always distinct, 100 ms apart]",
+                    100.0 * win_identical_ / win_pairs_, win_identical_, win_pairs_,
+                    Percentile(win_spacing_ms_, 0.5),
+                    *std::min_element(win_spacing_ms_.begin(), win_spacing_ms_.end()),
+                    *std::max_element(win_spacing_ms_.begin(), win_spacing_ms_.end()),
+                    win_spacing_ms_.size(), 100.0 * all_identical_ / all_pairs_, all_identical_,
+                    all_pairs_, Percentile(all_spacing_ms_, 0.5));
+            }
+        }
+        if (!win_infer_ms_.empty()) {
+            LOG_INFO(
+                "[LATENCY] jepa_infer: median=%.2f ms  p95=%.2f ms  max=%.2f ms  (n=%zu)",
+                Percentile(win_infer_ms_, 0.5), Percentile(win_infer_ms_, 0.95),
+                *std::max_element(win_infer_ms_.begin(), win_infer_ms_.end()),
+                win_infer_ms_.size());
+        }
+        if (win_age_ms_.empty()) {
+            LOG_INFO("[LATENCY] depth_age: n/a (no timestamped depth frames received)");
+            return;
+        }
+        LOG_INFO(
+            "[LATENCY] depth_age (scan->jepa): median=%.1f ms  p95=%.1f ms  min=%.1f  max=%.1f  "
+            "(n=%zu)  | whole run median=%.1f ms (n=%zu)",
+            Percentile(win_age_ms_, 0.5), Percentile(win_age_ms_, 0.95),
+            *std::min_element(win_age_ms_.begin(), win_age_ms_.end()),
+            *std::max_element(win_age_ms_.begin(), win_age_ms_.end()), win_age_ms_.size(),
+            Percentile(all_age_ms_, 0.5), all_age_ms_.size());
+        if (!win_scan_to_pub_ms_.empty()) {
+            LOG_INFO(
+                "[LATENCY]   breakdown median: scan->publish=%.1f ms  publish->recv=%.1f ms  "
+                "recv->jepa=%.1f ms",
+                Percentile(win_scan_to_pub_ms_, 0.5), Percentile(win_pub_to_recv_ms_, 0.5),
+                Percentile(win_recv_to_consume_ms_, 0.5));
+        }
+    }
+
+    std::chrono::steady_clock::time_point window_start_{};
+    long loop_count_ = 0;
+    long policy_count_ = 0;
+    long estimator_count_ = 0;
+    std::vector<double> win_age_ms_;
+    std::vector<double> win_scan_to_pub_ms_;
+    std::vector<double> win_pub_to_recv_ms_;
+    std::vector<double> win_recv_to_consume_ms_;
+    std::vector<double> win_infer_ms_;
+    std::vector<double> all_age_ms_;
+    std::vector<double> win_spacing_ms_;
+    std::vector<double> all_spacing_ms_;
+    long win_pairs_ = 0, win_identical_ = 0;
+    long all_pairs_ = 0, all_identical_ = 0;
+};
+
 /**
  * @brief World-model locomotion control node.
  *
@@ -860,6 +1026,7 @@ class LocomotionNode {
             }
 
             run_controller();
+            rate_monitor_.OnLoop();
 
             static int log_counter = 0;
             if (log_counter++ % 50 == 0) {
@@ -977,9 +1144,15 @@ class LocomotionNode {
             std::memcpy(&w, msg.data(), sizeof(uint32_t));
             std::memcpy(&h, static_cast<const uint8_t *>(msg.data()) + 4, sizeof(uint32_t));
 
-            if (msg.size() != 8 + w * h * sizeof(float)) {
+            // Frame = 8-byte header + pixels, optionally followed by a 16-byte trailer:
+            // [uint64 newest_scan_ns][uint64 publish_ns] (system_clock). Plain frames
+            // (e.g. from the sim depth camera) carry no timestamps.
+            const size_t frame_bytes = 8 + static_cast<size_t>(w) * h * sizeof(float);
+            const bool has_stamps = msg.size() == frame_bytes + 2 * sizeof(uint64_t);
+            if (msg.size() != frame_bytes && !has_stamps) {
                 continue; // unexpected size
             }
+            const uint64_t recv_ns = wall_clock_ns();
 
             if (w != expected_w || h != expected_h) {
                 if (!depth_size_mismatch_.exchange(true, std::memory_order_relaxed)) {
@@ -994,6 +1167,15 @@ class LocomotionNode {
             const float *data_ptr =
                 reinterpret_cast<const float *>(static_cast<const uint8_t *>(msg.data()) + 8);
             std::copy_n(data_ptr, depth_pixels, latest_depth_frame_.begin());
+            latest_depth_recv_ns_ = recv_ns;
+            ++latest_depth_seq_;
+            latest_depth_scan_ns_ = 0;
+            latest_depth_publish_ns_ = 0;
+            if (has_stamps) {
+                const uint8_t *trailer = static_cast<const uint8_t *>(msg.data()) + frame_bytes;
+                std::memcpy(&latest_depth_scan_ns_, trailer, sizeof(uint64_t));
+                std::memcpy(&latest_depth_publish_ns_, trailer + sizeof(uint64_t), sizeof(uint64_t));
+            }
             depth_frame_received_ = true;
         }
     }
@@ -1983,12 +2165,22 @@ class LocomotionNode {
             // Duplicate the latest frame when initializing the depth history.
             if (!depth_prev_initialized_) {
                 prev_depth_frame_ = latest_depth_frame_;
+                prev_depth_scan_ns_ = latest_depth_scan_ns_;
+                prev_depth_seq_ = latest_depth_seq_;
                 depth_prev_initialized_ = true;
             }
+            estimator_prev_scan_ns_ = prev_depth_scan_ns_;
+            estimator_prev_seq_ = prev_depth_seq_;
+            estimator_latest_seq_ = latest_depth_seq_;
+            estimator_depth_scan_ns_ = latest_depth_scan_ns_;
+            estimator_depth_publish_ns_ = latest_depth_publish_ns_;
+            estimator_depth_recv_ns_ = latest_depth_recv_ns_;
             std::copy_n(prev_depth_frame_.begin(), depth_pixels, live_depth_stack.begin());
             std::copy_n(
                 latest_depth_frame_.begin(), depth_pixels, live_depth_stack.begin() + depth_pixels);
             prev_depth_frame_ = latest_depth_frame_;
+            prev_depth_scan_ns_ = latest_depth_scan_ns_;
+            prev_depth_seq_ = latest_depth_seq_;
         }
 
         std::copy(live_depth_stack.begin(), live_depth_stack.end(), depth_buffer_.begin());
@@ -1997,6 +2189,7 @@ class LocomotionNode {
         if (wm_step_counter_ % config_.wm_update_interval == 0) {
             bool wm_updated = run_sensor_estimator();
             if (wm_updated) {
+                rate_monitor_.OnEstimator();
                 update_high_feat_window();
             }
         }
@@ -2006,6 +2199,7 @@ class LocomotionNode {
         float max_abs_action_delta = 0.0f;
         try {
             auto actions = run_policy();
+            rate_monitor_.OnPolicy();
 
             // NaN/Inf check
             for (auto &val : actions) {
@@ -2334,9 +2528,29 @@ class LocomotionNode {
                 estimator_hidden_dims_.size()));
 
         try {
+            // Depth age as seen by JEPA: now minus capture time of the newest scan in the frame
+            // that was copied into depth_buffer_ for this step.
+            DepthStamps stamps;
+            {
+                std::lock_guard<std::mutex> lock(depth_mutex_);
+                stamps.scan_ns = estimator_depth_scan_ns_;
+                stamps.publish_ns = estimator_depth_publish_ns_;
+                stamps.recv_ns = estimator_depth_recv_ns_;
+                stamps.prev_scan_ns = estimator_prev_scan_ns_;
+                stamps.prev_seq = estimator_prev_seq_;
+                stamps.latest_seq = estimator_latest_seq_;
+            }
+            const uint64_t consume_ns = wall_clock_ns();
+            const auto infer_start = std::chrono::steady_clock::now();
+
             auto output_tensors = sensor_estimator_session_->Run(
                 Ort::RunOptions{nullptr}, input_names.data(), input_tensors.data(),
                 input_tensors.size(), output_names.data(), output_names.size());
+
+            const double infer_ms = std::chrono::duration<double, std::milli>(
+                                        std::chrono::steady_clock::now() - infer_start)
+                                        .count();
+            rate_monitor_.OnEstimatorLatency(stamps, consume_ns, infer_ms);
 
             // Cache the policy feature separately from the estimator recurrent state.
             float *feat_ptr = output_tensors[0].GetTensorMutableData<float>();
@@ -2404,6 +2618,21 @@ class LocomotionNode {
     bool depth_prev_initialized_ = false;   // True after first depth stack is built
     bool depth_frame_received_ = false;
     std::atomic<bool> depth_size_mismatch_{false};
+    // Timestamps of latest_depth_frame_ (system_clock ns; 0 = unknown). Guarded by depth_mutex_.
+    uint64_t latest_depth_scan_ns_ = 0;    // newest scan inside the frame (publisher clock)
+    uint64_t latest_depth_publish_ns_ = 0; // when the publisher sent the frame
+    uint64_t latest_depth_recv_ns_ = 0;    // when the receiver thread got it
+    uint64_t latest_depth_seq_ = 0;        // arrival counter of latest_depth_frame_
+    // Same stamps for prev_depth_frame_ (the frame in estimator channel 0).
+    uint64_t prev_depth_scan_ns_ = 0;
+    uint64_t prev_depth_seq_ = 0;
+    // Stamps of the frame in depth_buffer_ (what JEPA actually consumes). Guarded by depth_mutex_.
+    uint64_t estimator_depth_scan_ns_ = 0;
+    uint64_t estimator_depth_publish_ns_ = 0;
+    uint64_t estimator_depth_recv_ns_ = 0;
+    uint64_t estimator_prev_scan_ns_ = 0;
+    uint64_t estimator_prev_seq_ = 0;
+    uint64_t estimator_latest_seq_ = 0;
 
     // ZMQ
     std::unique_ptr<zmq::context_t> zmq_ctx_;
@@ -2434,6 +2663,9 @@ class LocomotionNode {
     bool safety_fault_ = false;
     bool safety_fault_logged_ = false;
     int safety_ood_counter_ = 0;
+
+    // Loop / policy / JEPA rate logging
+    RateMonitor rate_monitor_;
 };
 
 int main(int argc, char *argv[]) {

@@ -452,6 +452,27 @@ static void accumulateMin(const float *hist, int num_frames, float *output) {
     }
 }
 
+// ── Latency stamps ───────────────────────────────────────────────────────────
+// Every published depth message is followed by a 16-byte trailer after the pixel data:
+//   [uint64 newest_scan_ns][uint64 publish_ns]   (system_clock, ns since epoch)
+// newest_scan_ns is when the newest scan in the aggregated window was received here
+// (0 = unknown). Consumers use it to measure depth age; it is ignored by old readers
+// that only look at the first 8 + w*h*4 bytes.
+static constexpr size_t kStampTrailerSize = 2 * sizeof(uint64_t);
+
+static uint64_t wallClockNs() {
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count());
+}
+
+static void writeStampTrailer(uint8_t *dst, uint64_t newest_scan_ns) {
+    const uint64_t publish_ns = wallClockNs();
+    std::memcpy(dst, &newest_scan_ns, sizeof(uint64_t));
+    std::memcpy(dst + sizeof(uint64_t), &publish_ns, sizeof(uint64_t));
+}
+
 // ── ROS2 Node ────────────────────────────────────────────────────────────────
 class LidarDepthPub : public rclcpp::Node {
   public:
@@ -465,7 +486,7 @@ class LidarDepthPub : public rclcpp::Node {
         std::copy(occlusion_mask, occlusion_mask + gGridSize, occlusion_mask_);
 
         // Pre-build ZMQ message buffer: [uint32 w][uint32 h][float32 × w × h]
-        zmq_buf_.resize(kHeaderSize + gridDataSize());
+        zmq_buf_.resize(kHeaderSize + gridDataSize() + kStampTrailerSize);
         {
             uint32_t w = gGridCols, h = kGridRows;
             std::memcpy(zmq_buf_.data(), &w, sizeof(uint32_t));
@@ -496,6 +517,7 @@ class LidarDepthPub : public rclcpp::Node {
   private:
     // Called by ROS2 subscription — just buffer the frame
     void lidarCallback(const livox_ros_driver2::msg::CustomMsg::SharedPtr msg) {
+        const uint64_t recv_ns = wallClockNs();
         // ── Step 1: Spherical projection ─────────────────────────────────────
         float frame[kMaxGridSize];
         projectToSphericalGrid(msg, frame, downsample_rate_);
@@ -519,6 +541,7 @@ class LidarDepthPub : public rclcpp::Node {
         std::copy(frame, frame + gGridSize,
                   hist_scans_.data() + static_cast<size_t>(num_stacked_ - 1) * gGridSize);
 
+        newest_scan_ns_ = recv_ns;
         ++frame_count_;
         last_point_num_ = msg->point_num;
     }
@@ -526,12 +549,15 @@ class LidarDepthPub : public rclcpp::Node {
     // Called by wall timer at 10 Hz — aggregate and publish
     void publishTimerCallback() {
         float aggregated[kMaxGridSize];
+        uint64_t scan_ns;
         {
             std::lock_guard<std::mutex> lock(buf_mutex_);
             accumulateMin(hist_scans_.data(), num_stacked_, aggregated);
+            scan_ns = newest_scan_ns_;
         }
 
         std::memcpy(zmq_buf_.data() + kHeaderSize, aggregated, gridDataSize());
+        writeStampTrailer(zmq_buf_.data() + kHeaderSize + gridDataSize(), scan_ns);
         zmq_send(zmq_pub_, zmq_buf_.data(), zmq_buf_.size(), ZMQ_DONTWAIT);
 
         ++publish_count_;
@@ -565,6 +591,7 @@ class LidarDepthPub : public rclcpp::Node {
     // Ring buffer for temporal accumulation (sliding window of latest frames)
     std::mutex buf_mutex_;
     std::vector<float> hist_scans_;
+    uint64_t newest_scan_ns_ = 0; // receive time of newest scan in hist_scans_
 
     // ROS2
     rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr sub_;
@@ -664,6 +691,7 @@ static void runZmqSource(
     uint64_t frame_count = 0;
     uint64_t publish_count = 0;
     uint32_t last_point_num = 0;
+    uint64_t newest_scan_ns = 0; // receive time of newest scan in hist_scans
     auto t0 = std::chrono::steady_clock::now();
 
     std::cout << "[LidarDepth] Pipeline: ZMQ points → downsample every " << downsample_rate
@@ -684,6 +712,7 @@ static void runZmqSource(
                 break;
             }
 
+            const uint64_t recv_ns = wallClockNs();
             size_t msg_size = static_cast<size_t>(nbytes);
             if (msg_size < kPoseBytes + 3 * sizeof(float))
                 continue;
@@ -714,6 +743,7 @@ static void runZmqSource(
                 }
                 std::copy(frame, frame + gGridSize,
                           hist_scans.data() + static_cast<size_t>(num_stacked - 1) * gGridSize);
+                newest_scan_ns = recv_ns;
                 frame_count++;
                 last_point_num = static_cast<uint32_t>(num_points);
             }
@@ -722,7 +752,7 @@ static void runZmqSource(
 
     // ── Publish timer: aggregate and publish at kPublishRate Hz ─────────────
     //    (mirrors publishTimerCallback in the ROS2 path)
-    std::vector<uint8_t> zmq_buf(kHeaderSize + gridDataSize());
+    std::vector<uint8_t> zmq_buf(kHeaderSize + gridDataSize() + kStampTrailerSize);
     {
         uint32_t w = gGridCols, h = kGridRows;
         std::memcpy(zmq_buf.data(), &w, sizeof(uint32_t));
@@ -738,12 +768,15 @@ static void runZmqSource(
 
         // Aggregate ring buffer (same as publishTimerCallback)
         float aggregated[kMaxGridSize];
+        uint64_t scan_ns;
         {
             std::lock_guard<std::mutex> lock(buf_mutex);
             accumulateMin(hist_scans.data(), num_stacked, aggregated);
+            scan_ns = newest_scan_ns;
         }
 
         std::memcpy(zmq_buf.data() + kHeaderSize, aggregated, gridDataSize());
+        writeStampTrailer(zmq_buf.data() + kHeaderSize + gridDataSize(), scan_ns);
         zmq_send(zmq_pub, zmq_buf.data(), zmq_buf.size(), ZMQ_DONTWAIT);
         publish_count++;
 

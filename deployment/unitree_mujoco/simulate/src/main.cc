@@ -299,12 +299,51 @@ mjModel *LoadModel(const char *file, mj::Simulate &sim) {
     return mnew;
 }
 
+// real-time factor monitor: sim time advanced / wall time elapsed, over a window
+// of kRtfWindowSteps physics steps. RTF ~= 1.0 means the sim keeps pace with the
+// wall clock, so the policy's control rate matches what it would see on hardware.
+constexpr int kRtfWindowSteps = 1000;
+struct RtfMonitor {
+    std::chrono::steady_clock::time_point wall0;
+    mjtNum sim0 = 0;
+    long steps = 0;
+    bool anchored = false;
+
+    void Reset() { anchored = false; }
+
+    // call after every mj_step
+    void OnStep(const mjData *d) {
+        const auto now = std::chrono::steady_clock::now();
+        // (re)anchor on first step, after pause, or when sim time jumps back (reset/reload)
+        if (!anchored || d->time < sim0) {
+            wall0 = now;
+            sim0 = d->time;
+            steps = 0;
+            anchored = true;
+            return;
+        }
+        if (++steps % kRtfWindowSteps == 0) {
+            const double wall = std::chrono::duration<double>(now - wall0).count();
+            const double simdt = d->time - sim0;
+            if (wall > 0) {
+                std::printf("RTF = %.3f  (sim %.3fs / wall %.3fs over %d steps)%s\n",
+                            simdt / wall, simdt, wall, kRtfWindowSteps,
+                            (simdt / wall < 0.95 || simdt / wall > 1.05) ? "  <-- OUT OF RANGE" : "");
+                std::fflush(stdout);
+            }
+            wall0 = now;
+            sim0 = d->time;
+        }
+    }
+};
+
 // simulate in background thread (while rendering in main thread)
 void PhysicsLoop(
     mj::Simulate &sim, Mid360LidarPublisher *lidar, TerrainSwitcher *terrain_switcher) {
     // cpu-sim syncronization point
     std::chrono::time_point<mj::Simulate::Clock> syncCPU;
     mjtNum syncSim = 0;
+    RtfMonitor rtf;
 
     // ChannelFactory::Instance()->Init(0);
     // UnitreeDds ud(d);
@@ -429,6 +468,7 @@ void PhysicsLoop(
 
                         // run single step, let next iteration deal with timing
                         mj_step(m, d);
+                        rtf.OnStep(d);
                         stepped = true;
                     }
 
@@ -469,6 +509,7 @@ void PhysicsLoop(
 
                             // call mj_step
                             mj_step(m, d);
+                            rtf.OnStep(d);
                             stepped = true;
 
                             // break if reset
@@ -491,6 +532,7 @@ void PhysicsLoop(
                     // run mj_forward, to update rendering and joint sliders
                     mj_forward(m, d);
                     sim.speed_changed = true;
+                    rtf.Reset();
                 }
             }
         } // release std::lock_guard<std::mutex>

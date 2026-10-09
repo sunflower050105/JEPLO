@@ -16,33 +16,30 @@ if(PkgConfig_FOUND)
 endif()
 
 # ── Target ────────────────────────────────────────────────────────────────────
+set(LIDAR_DEPTH_TARGETS lidar_depth_pub)
 add_executable(lidar_depth_pub lidar_depth_pub.cpp)
-add_executable(lidar_depth_pub_occ lidar_depth_pub_occ.cpp)
 
-ament_target_dependencies(lidar_depth_pub
-    rclcpp
-    livox_ros_driver2
-)
+# lidar_depth_pub_occ.cpp is not shipped in the public release; build it only if present
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/lidar_depth_pub_occ.cpp)
+    list(APPEND LIDAR_DEPTH_TARGETS lidar_depth_pub_occ)
+    add_executable(lidar_depth_pub_occ lidar_depth_pub_occ.cpp)
+endif()
 
-ament_target_dependencies(lidar_depth_pub_occ
-    rclcpp
-    livox_ros_driver2
-)
+foreach(target ${LIDAR_DEPTH_TARGETS})
+    ament_target_dependencies(${target}
+        rclcpp
+        livox_ros_driver2
+    )
 
-target_link_libraries(lidar_depth_pub
-    $<IF:$<TARGET_EXISTS:PkgConfig::ZMQ>,PkgConfig::ZMQ,zmq>
-    pthread
-)
+    target_link_libraries(${target}
+        $<IF:$<TARGET_EXISTS:PkgConfig::ZMQ>,PkgConfig::ZMQ,zmq>
+        pthread
+    )
 
-target_link_libraries(lidar_depth_pub_occ
-    $<IF:$<TARGET_EXISTS:PkgConfig::ZMQ>,PkgConfig::ZMQ,zmq>
-    pthread
-)
-
-target_compile_options(lidar_depth_pub PRIVATE -Wall -Wextra -O2)
-target_compile_options(lidar_depth_pub_occ PRIVATE -Wall -Wextra -O2)
+    target_compile_options(${target} PRIVATE -Wall -Wextra -O2)
+endforeach()
 
 # ── Install ───────────────────────────────────────────────────────────────────
-install(TARGETS lidar_depth_pub lidar_depth_pub_occ DESTINATION lib/${PROJECT_NAME})
+install(TARGETS ${LIDAR_DEPTH_TARGETS} DESTINATION lib/${PROJECT_NAME})
 
 ament_package()

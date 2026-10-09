@@ -113,8 +113,9 @@ def main():
             if len(msg) >= 8:
                 w, h = struct.unpack("II", msg[:8])
                 expected = 8 + w * h * 4
-                if len(msg) == expected:
-                    depth = np.frombuffer(msg[8:], dtype=np.float32).reshape(h, w)
+                # Newer publishers append a 16-byte timestamp trailer after the pixels.
+                if len(msg) in (expected, expected + 16):
+                    depth = np.frombuffer(msg[8:expected], dtype=np.float32).reshape(h, w)
                     last_depth = depth
                     frame_count += 1
         except zmq.Again:
