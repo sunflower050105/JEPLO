@@ -75,13 +75,13 @@ inline po::variables_map helper(int argc, char **argv) {
         "Path to the Mid360 scan_mode/mid360.npy file")(
         "lidar-hz", po::value<double>(&config.lidar_hz), "LiDAR scan rate (default: 20 Hz)")(
         "lidar-port", po::value<int>(&config.lidar_port), "LiDAR ZMQ port (default: 5590)")(
-        "see-then-hidden", "Sim-only box-region occlusion after a clean preview")(
+        "see-then-hidden", "Sim-only target-region occlusion after a clean preview")(
         "see-then-hidden-distance", po::value<double>(&config.see_then_hidden_distance),
-        "Box-surface distance in metres for occlusion onset (default: 1.2)")(
+        "Target-surface distance in metres for occlusion onset (default: 1.2)")(
         "see-then-hidden-preview-scans", po::value<int>(&config.see_then_hidden_preview_scans),
         "Consecutive LiDAR scans that must see the target first (default: 3)")(
         "see-then-hidden-target", po::value<std::string>(&config.see_then_hidden_target),
-        "MuJoCo box geom to hide (default: box1)")(
+        "MuJoCo box geom or body of box geoms to hide (e.g. box1 or stairs)")(
         "see-then-hidden-log", po::value<std::string>(&config.see_then_hidden_log),
         "Write per-scan diagnostic CSV to this path");
 

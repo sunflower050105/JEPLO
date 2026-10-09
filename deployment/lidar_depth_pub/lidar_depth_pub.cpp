@@ -693,9 +693,9 @@ static void runZmqSource(
     // ── Ring buffer (same as ROS2 path: sliding window, shift-left) ─────────
     std::mutex buf_mutex;
     std::vector<float> hist_scans(static_cast<size_t>(num_stacked) * gGridSize, 1.0f);
-    std::vector<uint8_t> hist_box_masks(static_cast<size_t>(num_stacked) * gGridSize, 0);
-    std::vector<uint8_t> sim_box_mask(gGridSize, 0);
-    bool sim_box_mask_active = false;
+    std::vector<uint8_t> hist_target_masks(static_cast<size_t>(num_stacked) * gGridSize, 0);
+    std::vector<uint8_t> sim_target_mask(gGridSize, 0);
+    bool sim_target_mask_active = false;
     std::atomic<bool> protocol_error{false};
 
     static constexpr size_t kHeaderSize = sizeof(uint32_t) * 2;
@@ -741,7 +741,7 @@ static void runZmqSource(
                 recv_buf.data(), msg_size, kPoseBytes, kGridRows, gGridCols,
                 &point_bytes, &incoming_mask, &incoming_mask_active);
             if (parse_result == see_then_hidden_wire::ParseResult::kInvalid) {
-                std::cerr << "[LidarDepth] Invalid simulator point-cloud or box-mask "
+                std::cerr << "[LidarDepth] Invalid simulator point-cloud or target-mask "
                              "dimensions; check matching --fov and --lidar-legacy-fov\n";
                 protocol_error = true;
                 break;
@@ -764,9 +764,9 @@ static void runZmqSource(
             // ── Apply fixed cage/extra occlusion mask ──────────────────────
             applyOcclusionMask(frame, occlusion_mask);
 
-            // Mask each scan before it enters the history. The box changes
+            // Mask each scan before it enters the history. The target changes
             // pixel position as the robot moves, so masking only the latest
-            // aggregate would leave older box returns at stale pixels.
+            // aggregate would leave older target returns at stale pixels.
             if (incoming_mask_active) {
                 for (int pixel = 0; pixel < gGridSize; ++pixel) {
                     if (incoming_mask[pixel]) frame[pixel] = 1.0f;
@@ -776,22 +776,22 @@ static void runZmqSource(
             // ── Push into ring buffer (shift-left, same as ROS2 path) ───────
             {
                 std::lock_guard<std::mutex> lock(buf_mutex);
-                if (incoming_mask_active && !sim_box_mask_active) {
+                if (incoming_mask_active && !sim_target_mask_active) {
                     // Remove the target from earlier clean preview scans at
                     // each scan's own pixel position. Keep other depth data.
                     for (size_t pixel = 0; pixel < hist_scans.size(); ++pixel) {
-                        if (hist_box_masks[pixel]) hist_scans[pixel] = 1.0f;
+                        if (hist_target_masks[pixel]) hist_scans[pixel] = 1.0f;
                     }
                 }
                 if (num_stacked > 1) {
                     std::memmove(hist_scans.data(), hist_scans.data() + gGridSize,
                                  static_cast<size_t>(num_stacked - 1) * gridDataSize());
-                    std::memmove(hist_box_masks.data(), hist_box_masks.data() + gGridSize,
+                    std::memmove(hist_target_masks.data(), hist_target_masks.data() + gGridSize,
                                  static_cast<size_t>(num_stacked - 1) * gGridSize);
                 }
                 std::copy(frame, frame + gGridSize,
                           hist_scans.data() + static_cast<size_t>(num_stacked - 1) * gGridSize);
-                uint8_t *stored_mask = hist_box_masks.data() +
+                uint8_t *stored_mask = hist_target_masks.data() +
                                        static_cast<size_t>(num_stacked - 1) * gGridSize;
                 if (incoming_mask) {
                     std::copy_n(incoming_mask, gGridSize, stored_mask);
@@ -801,16 +801,16 @@ static void runZmqSource(
                 newest_scan_ns = recv_ns;
                 frame_count++;
                 last_point_num = static_cast<uint32_t>(num_points);
-                const bool was_active = sim_box_mask_active;
-                sim_box_mask_active = incoming_mask_active;
+                const bool was_active = sim_target_mask_active;
+                sim_target_mask_active = incoming_mask_active;
                 if (incoming_mask_active) {
-                    std::copy_n(incoming_mask, gGridSize, sim_box_mask.begin());
+                    std::copy_n(incoming_mask, gGridSize, sim_target_mask.begin());
                 } else {
-                    std::fill(sim_box_mask.begin(), sim_box_mask.end(), 0);
+                    std::fill(sim_target_mask.begin(), sim_target_mask.end(), 0);
                 }
-                if (sim_box_mask_active != was_active) {
-                    std::cout << "[LidarDepth] See-then-hidden box mask "
-                              << (sim_box_mask_active ? "ON" : "OFF") << '\n';
+                if (sim_target_mask_active != was_active) {
+                    std::cout << "[LidarDepth] See-then-hidden target mask "
+                              << (sim_target_mask_active ? "ON" : "OFF") << '\n';
                 }
             }
         }
@@ -838,9 +838,9 @@ static void runZmqSource(
         {
             std::lock_guard<std::mutex> lock(buf_mutex);
             accumulateMin(hist_scans.data(), num_stacked, aggregated);
-            if (sim_box_mask_active) {
+            if (sim_target_mask_active) {
                 for (int pixel = 0; pixel < gGridSize; ++pixel) {
-                    if (sim_box_mask[pixel]) aggregated[pixel] = 1.0f;
+                    if (sim_target_mask[pixel]) aggregated[pixel] = 1.0f;
                 }
             }
             scan_ns = newest_scan_ns;

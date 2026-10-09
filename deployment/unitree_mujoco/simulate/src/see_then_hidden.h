@@ -13,17 +13,18 @@
 #include <utility>
 #include <vector>
 
-// Simulation-only intervention. The policy receives the normal LiDAR stream
-// until the named box has been hit by several distinct scans and the sensor is
-// within trigger_distance_m of its surface. Thereafter a projected box-region
-// mask is sent to the depth publisher on every scan until a simulation reset.
+// Simulation-only intervention. The target can be one box geom or a body of
+// box geoms (for example, the whole stairs terrain). The policy receives the
+// normal LiDAR stream until the target has been seen in several scans and the
+// sensor is close to its surface. Thereafter the target's projected regions
+// are masked until a simulation reset or terrain switch.
 class SeeThenHidden {
   public:
-    SeeThenHidden(double trigger_distance_m, int preview_scans, std::string target_geom,
+    SeeThenHidden(double trigger_distance_m, int preview_scans, std::string target_name,
                   int columns, const std::string &log_path)
         : trigger_distance_m_(trigger_distance_m)
         , preview_scans_(preview_scans)
-        , target_geom_(std::move(target_geom))
+        , target_name_(std::move(target_name))
         , columns_(columns) {
         if (!log_path.empty()) {
             log_.open(log_path);
@@ -46,22 +47,23 @@ class SeeThenHidden {
         }
         previous_sim_time_ = data->time;
 
-        if (model != model_) {
-            model_ = model;
-            geom_id_ = mj_name2id(model, mjOBJ_GEOM, target_geom_.c_str());
-            if (geom_id_ < 0 || model->geom_type[geom_id_] != mjGEOM_BOX) {
-                std::cerr << "[SeeThenHidden] Target must be a box geom: " << target_geom_
-                          << '\n';
-                return false;
-            }
-            reset("model loaded");
-        }
+        if (model != model_) initializeTarget(model);
+        if (target_geom_ids_.empty()) return false;
 
-        const mjtNum *center = data->geom_xpos + 3 * geom_id_;
-        const mjtNum *rotation = data->geom_xmat + 9 * geom_id_;
-        const mjtNum *half_size = model->geom_size + 3 * geom_id_;
-        const double range = distanceToBox(sensor_position, center, rotation, half_size);
-        if (range > 10.0) {
+        double range = 1e9;
+        int closest_geom_id = -1;
+        for (int geom_id : target_geom_ids_) {
+            const mjtNum *center = data->geom_xpos + 3 * geom_id;
+            const mjtNum *rotation = data->geom_xmat + 9 * geom_id;
+            const mjtNum *half_size = model->geom_size + 3 * geom_id;
+            const double geom_range = distanceToBox(
+                sensor_position, center, rotation, half_size);
+            if (geom_range < range) {
+                range = geom_range;
+                closest_geom_id = geom_id;
+            }
+        }
+        if (range > kActiveTargetDistance) {
             if (hidden_ || preview_count_ > 0) {
                 reset("target moved out of scene");
             }
@@ -70,33 +72,47 @@ class SeeThenHidden {
 
         int hits = 0;
         for (int i = 0; i < ray_count; ++i) {
-            if (hit_geom_ids[i] == geom_id_ && hit_distances[i] >= 0.1 &&
+            const int geom_id = hit_geom_ids[i];
+            if (geom_id >= 0 && geom_id < static_cast<int>(target_geom_lookup_.size()) &&
+                target_geom_lookup_[geom_id] && hit_distances[i] >= 0.1 &&
                 hit_distances[i] <= 2.0) {
                 ++hits;
             }
         }
         if (!hidden_) {
             preview_count_ = hits > 0 ? preview_count_ + 1 : 0;
-            if (preview_count_ >= preview_scans_ && range <= trigger_distance_m_) {
-                hidden_ = true;
-                std::cout << "[SeeThenHidden] HIDE at simulation time " << std::fixed
-                          << std::setprecision(3) << data->time << " s, box range " << range
-                          << " m, after " << preview_count_ << " visible scans\n";
-            }
         }
 
-        // Send the projected region during the preview too. The publisher
-        // stores it alongside each clean scan, so it can remove only the old
-        // box pixels when hiding starts, leaving other old depth intact.
-        const size_t projected_pixels = projectBoxMask(sensor_position, sensor_rotation,
-                                                        center, rotation, half_size, mask);
+        // Preview masks are metadata until hiding starts. Only geoms that can
+        // contribute returns within the depth image's 2 m range are included.
+        for (int geom_id : target_geom_ids_) {
+            const mjtNum *center = data->geom_xpos + 3 * geom_id;
+            const mjtNum *rotation = data->geom_xmat + 9 * geom_id;
+            const mjtNum *half_size = model->geom_size + 3 * geom_id;
+            if (distanceToBox(sensor_position, center, rotation, half_size) <=
+                kDepthRange) {
+                projectBoxMask(sensor_position, sensor_rotation, center, rotation,
+                               half_size, mask);
+            }
+        }
+        const size_t projected_pixels = static_cast<size_t>(
+            std::count(mask->begin(), mask->end(), uint8_t{1}));
+        if (!hidden_ && preview_count_ >= preview_scans_ &&
+            range <= trigger_distance_m_ && projected_pixels > 0) {
+            hidden_ = true;
+            std::cout << "[SeeThenHidden] HIDE at simulation time " << std::fixed
+                      << std::setprecision(3) << data->time << " s, " << target_name_
+                      << " range " << range << " m, after " << preview_count_
+                      << " visible scans\n";
+        }
         const size_t masked_pixels = hidden_ ? projected_pixels : 0;
+        const mjtNum *closest_center = data->geom_xpos + 3 * closest_geom_id;
         if (log_) {
             log_ << std::fixed << std::setprecision(4) << data->time << ',' << range << ','
                  << hits << ',' << preview_count_ << ',' << static_cast<int>(hidden_)
                  << ',' << masked_pixels;
             for (int axis = 0; axis < 3; ++axis) log_ << ',' << sensor_position[axis];
-            for (int axis = 0; axis < 3; ++axis) log_ << ',' << center[axis];
+            for (int axis = 0; axis < 3; ++axis) log_ << ',' << closest_center[axis];
             log_ << '\n';
             log_.flush();
         }
@@ -107,6 +123,39 @@ class SeeThenHidden {
     static constexpr int kRows = 25;
     static constexpr double kPi = 3.14159265358979323846;
     static constexpr double kDegreesToRadians = kPi / 180.0;
+    static constexpr double kDepthRange = 2.0;
+    static constexpr double kActiveTargetDistance = 10.0;
+
+    void initializeTarget(const mjModel *model) {
+        model_ = model;
+        target_geom_ids_.clear();
+        target_geom_lookup_.assign(model->ngeom, false);
+        const int geom_id = mj_name2id(model, mjOBJ_GEOM, target_name_.c_str());
+        if (geom_id >= 0) {
+            if (model->geom_type[geom_id] == mjGEOM_BOX) {
+                target_geom_ids_.push_back(geom_id);
+            }
+        } else {
+            const int body_id = mj_name2id(model, mjOBJ_BODY, target_name_.c_str());
+            if (body_id >= 0) {
+                const int first = model->body_geomadr[body_id];
+                const int count = model->body_geomnum[body_id];
+                for (int i = 0; i < count; ++i) {
+                    const int id = first + i;
+                    if (model->geom_type[id] == mjGEOM_BOX) target_geom_ids_.push_back(id);
+                }
+            }
+        }
+        if (target_geom_ids_.empty()) {
+            std::cerr << "[SeeThenHidden] Target must be a box geom or a body of box "
+                         "geoms: " << target_name_ << '\n';
+        } else {
+            for (int id : target_geom_ids_) target_geom_lookup_[id] = true;
+            std::cout << "[SeeThenHidden] Target " << target_name_ << " contains "
+                      << target_geom_ids_.size() << " box geom(s)\n";
+        }
+        reset("model loaded");
+    }
 
     void reset(const char *reason) {
         if (hidden_ || preview_count_ > 0) {
@@ -178,11 +227,12 @@ class SeeThenHidden {
 
     double trigger_distance_m_;
     int preview_scans_;
-    std::string target_geom_;
+    std::string target_name_;
     int columns_;
     std::ofstream log_;
     const mjModel *model_ = nullptr;
-    int geom_id_ = -1;
+    std::vector<int> target_geom_ids_;
+    std::vector<bool> target_geom_lookup_;
     double previous_sim_time_ = -1.0;
     int preview_count_ = 0;
     bool hidden_ = false;

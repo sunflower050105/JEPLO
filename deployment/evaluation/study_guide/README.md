@@ -3,6 +3,8 @@
 This folder explains the first diagnostic condition installed for the reproduced
 `my_policy_r2` policy. The [short run guide](../README.md) is the quickest way to
 start it; this document explains the reasoning and the implementation.
+The box target is the first condition; the same machinery can now target the
+`stairs` body or a single step such as `stair1`.
 
 ## 1. What question does this test ask?
 
@@ -30,8 +32,8 @@ The relevant runtime path is:
 
 ```text
 MuJoCo box + LiDAR rays
-  → point cloud and optional box-mask metadata (ZMQ :5590)
-  → depth publisher: 25×60 depth, 10-scan minimum, box masking (ZMQ :5560)
+  → point cloud and optional target-mask metadata (ZMQ :5590)
+  → depth publisher: 25×60 depth, 10-scan minimum, target masking (ZMQ :5560)
   → deployment launcher: current and previous depth images
   → recurrent sensor estimator: feature + updated hidden state
   → policy: proprioceptive history + estimator feature → actions
@@ -63,20 +65,22 @@ The optional experiment is enabled only by `--see-then-hidden` in the simulator.
 Its implementation is isolated in
 [`see_then_hidden.h`](../../unitree_mujoco/simulate/src/see_then_hidden.h).
 
-1. MuJoCo identifies the named box geometry, `box1` by default.
-2. A scan counts as a preview only if at least one ray hit that geometry at a
-   valid range between 0.1 and 2.0 m. A scan with no such hit resets the
+1. MuJoCo identifies a named box geometry (`box1` by default) or the box geoms
+   directly inside a named body (`stairs`).
+2. A scan counts as a preview only if at least one ray hit any selected geom at
+   a valid range between 0.1 and 2.0 m. A scan with no such hit resets the
    consecutive-preview counter.
-3. The trigger also requires LiDAR-to-box **surface** distance ≤ 1.2 m. This
-   distance is computed against the oriented box, not its center. Both
+3. The trigger also requires LiDAR-to-target **surface** distance ≤ 1.2 m. For
+   a body, this is the nearest selected box geom, not the body's center. Both
    conditions must be true on a LiDAR scan.
 4. Once triggered, `hidden=1` stays active until simulation time resets or the
    target is moved out of the active scene. The simulator prints `HIDE`.
-5. The eight box corners are projected into the spherical depth grid. Their
-   bounding rectangle, clipped to the `25 × 60` image with a one-pixel margin,
-   becomes the mask. It moves with the robot and box.
+5. The corners of each target box geom within the 2 m depth range are projected
+   into the spherical grid. The union of their bounding rectangles, clipped to
+   the `25 × 60` image with a one-pixel margin, becomes the mask. It moves with
+   the robot and terrain.
 
-Ground-truth box geometry is used **only to define the evaluation intervention**.
+Ground-truth target geometry is used **only to define the evaluation intervention**.
 It is not sent as a feature to the estimator or policy. The rectangular mask can
 cover nearby background inside its bounds; this is a limitation when
 interpreting the result.
@@ -96,11 +100,11 @@ The simulator sends a legacy-compatible point cloud with optional suffix:
 The footer identifies the extension, grid size, and whether hiding is active.
 When `active=0`, the projected mask is metadata only: the clean preview still
 reaches the estimator. The publisher stores that mask alongside each depth
-scan. When `active` first becomes 1, it erases the box pixels in those earlier
+scan. When `active` first becomes 1, it erases the target pixels in those earlier
 stored scans at **their own old pixel positions**. New scans are masked before
-entering the history. The current box region is also masked after the 10-scan
+entering the history. The current target region is also masked after the 10-scan
 minimum is computed. This prevents a previously seen return from reappearing
-outside the box's current pixels as the viewpoint changes, while retaining
+outside the target's current pixels as the viewpoint changes, while retaining
 other historical depth pixels.
 
 The wire format is in
@@ -161,6 +165,13 @@ cd deployment/unitree_mujoco/simulate/build-ubuntu2204
   --see-then-hidden-log /tmp/jeplo-see-then-hidden-trial01.csv
 ```
 
+For the staircase, restart this simulator with
+`--see-then-hidden-target stairs` and a new log filename, then press **Ctrl+1**
+to select stairs. The body target groups its active step geoms; a single geom
+target such as `stair1` hides only that step. Changing terrain with Ctrl+1 or
+Ctrl+2 does **not** change a running simulator's target flag. The other
+terminals use the same commands.
+
 Terminal 2 — simulation depth publisher:
 
 ```bash
@@ -207,7 +218,7 @@ In the MuJoCo window, press **Ctrl+2** to place the boxes terrain in front of
 the robot, then drive toward the first box. Do this before collecting the trial.
 The box is initially hidden elsewhere in the scene, so a CSV with only its
 header *before* Ctrl+2 is expected. A valid triggered trial should show
-`[SeeThenHidden] HIDE` in the simulator, `box mask ON` in the publisher, and a
+`[SeeThenHidden] HIDE` in the simulator, `target mask ON` in the publisher, and a
 rectangular far-depth area over the box in the viewer. Give each trial a
 distinct CSV path; restarting the simulator with the same path overwrites the
 old log.
@@ -221,10 +232,11 @@ For the visible control, restart the same simulator command **without**
 and initial pose as similar as possible. The policy and depth publisher remain
 the same in both conditions.
 
-The CSV columns are `sim_time_s`, box-surface `target_range_m`, number of valid
-`target_hits`, `consecutive_preview_scans`, `hidden` (0 or 1), `mask_pixels`, and
-the sensor and box-center positions. `mask_pixels` is zero during preview even
-though the preview mask is transmitted as metadata. If the target is more than
+The CSV columns are `sim_time_s`, target-surface `target_range_m`, number of
+valid `target_hits`, `consecutive_preview_scans`, `hidden` (0 or 1),
+`mask_pixels`, and the sensor and nearest target-geom center positions.
+`mask_pixels` is zero during preview, even though the projected mask is
+transmitted as metadata. If the target is more than
 10 m away or inactive, no per-scan row is written. A trial that never reaches a
 `hidden=1` row did **not** test this condition.
 
@@ -251,6 +263,8 @@ If both succeed, this specific distance and mask have not exposed a gap.
   trials.
 - The mask is a projected rectangle, not perfect object segmentation. Nearby
   pixels may be removed. This needs to be considered when interpreting a drop.
+- Keep `box1` and `stairs` as separate conditions in the results table: the
+  grouped stair mask covers multiple steps and can have a different area.
 - The two-image estimator input can briefly retain an older clean image after
   the first masked output. Inspect behavior after that image has been replaced.
 - This condition alone cannot separate remembered vision from proprioceptive or

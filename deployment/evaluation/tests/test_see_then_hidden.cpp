@@ -5,6 +5,7 @@
 #undef NDEBUG  // Keep the checks active in the documented Release build.
 #endif
 #include <cassert>
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -16,7 +17,11 @@ int main() {
     {
         std::ofstream file(scene);
         file << R"(<mujoco><worldbody><body pos="1.7 0 0.4"><geom name="box1"
-                 type="box" size="0.2 0.3 0.3"/></body></worldbody></mujoco>)";
+                 type="box" size="0.2 0.3 0.3"/></body>
+                 <body name="stairs" pos="1.7 0 0.4">
+                   <geom name="stair1" pos="0 -0.4 0" type="box" size="0.2 0.15 0.3"/>
+                   <geom name="stair2" pos="0 0.4 0" type="box" size="0.2 0.15 0.3"/>
+                 </body></worldbody></mujoco>)";
     }
     char error[1024]{};
     mjModel *model = mj_loadXML(scene.c_str(), nullptr, error, sizeof(error));
@@ -84,6 +89,34 @@ int main() {
     data->time = 0.0;
     assert(!experiment.update(model, data, near_sensor, identity, hits,
                               distances, 1, &mask));
+
+    // A body target combines separate stair geoms, while any one stair hit
+    // can satisfy the clean-preview condition.
+    const int stair2 = mj_name2id(model, mjOBJ_GEOM, "stair2");
+    assert(stair2 >= 0);
+    SeeThenHidden stair_experiment(1.2, 3, "stairs", 60, "");
+    const int stair_hits[1] = {stair2};
+    for (int scan = 0; scan < 3; ++scan) {
+        data->time = 0.05 * scan;
+        assert(!stair_experiment.update(model, data, far_sensor, identity,
+                                        stair_hits, distances, 1, &mask));
+    }
+    data->time = 0.15;
+    assert(stair_experiment.update(model, data, near_sensor, identity,
+                                   stair_hits, distances, 1, &mask));
+    assert(mask[2 * 60 + 20] == 1);
+    assert(mask[2 * 60 + 40] == 1);
+    assert(mask[2 * 60 + 30] == 0);
+
+    // Moving the selected terrain out of the scene resets its hide state.
+    const int stair_body = mj_name2id(model, mjOBJ_BODY, "stairs");
+    model->body_pos[3 * stair_body] = 1000.0;
+    mj_forward(model, data);
+    data->time = 0.20;
+    assert(!stair_experiment.update(model, data, near_sensor, identity,
+                                    stair_hits, distances, 1, &mask));
+    assert(std::count(mask.begin(), mask.end(), uint8_t{1}) == 0);
+
     mj_deleteData(data);
     mj_deleteModel(model);
     std::filesystem::remove(scene);

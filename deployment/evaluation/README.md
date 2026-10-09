@@ -21,6 +21,13 @@ preview will not silently count as "seen, then hidden".
 The mask is the box's projected rectangular extent with a one-pixel margin;
 it can also cover nearby background pixels within that rectangle.
 
+The default target is `box1`. To test the staircase, select the MuJoCo body
+`stairs` with `--see-then-hidden-target stairs`. Its nearby step geoms are
+masked together after at least three scans hit any of them and the LiDAR is
+within 1.2 m of the nearest step. Individual steps such as `stair1` can also
+be selected. **Restart the simulator** after changing the target; Ctrl+1 and
+Ctrl+2 only switch the physical terrain, not this command-line target.
+
 ## Build in the Ubuntu 22.04 container
 
 Enter `ubuntu-22-04` as in the project README, then run these commands from
@@ -61,6 +68,22 @@ cd deployment/unitree_mujoco/simulate/build-ubuntu2204
   --see-then-hidden-distance 1.2 --see-then-hidden-preview-scans 3 \
   --see-then-hidden-target box1 --see-then-hidden-log /tmp/jeplo-see-then-hidden.csv
 ```
+
+For a staircase trial, stop the old simulator and depth publisher processes,
+then restart them with the rebuilt binaries. Use this simulator command and
+press **Ctrl+1** instead of Ctrl+2:
+
+```bash
+cd deployment/unitree_mujoco/simulate/build-ubuntu2204
+./unitree_mujoco --lidar --lidar-legacy-fov --see-then-hidden \
+  --see-then-hidden-distance 1.2 --see-then-hidden-preview-scans 3 \
+  --see-then-hidden-target stairs \
+  --see-then-hidden-log /tmp/jeplo-see-then-hidden-stairs.csv
+```
+
+The rest of the pipeline stays the same. The depth publisher should print
+`See-then-hidden target mask ON` only after the preview and distance trigger;
+before then, visible stairs are expected.
 
 ```bash
 ./deployment/evaluation/build-ubuntu2204/lidar_depth_sim --sim --fov 25x60 \

@@ -154,11 +154,11 @@ class Mid360LidarPublisher {
     const std::string &error() const { return error_; }
 
     void enableSeeThenHidden(double trigger_distance_m, int preview_scans,
-                             const std::string &target_geom, const std::string &log_path) {
+                             const std::string &target_name, const std::string &log_path) {
         see_then_hidden_ = std::make_unique<SeeThenHidden>(
-            trigger_distance_m, preview_scans, target_geom, legacy_fov_ ? 60 : 120,
+            trigger_distance_m, preview_scans, target_name, legacy_fov_ ? 60 : 120,
             log_path);
-        std::cout << "[SeeThenHidden] Enabled for " << target_geom << "; trigger at "
+        std::cout << "[SeeThenHidden] Enabled for " << target_name << "; trigger at "
                   << trigger_distance_m << " m after " << preview_scans << " visible scans\n";
     }
 

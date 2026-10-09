@@ -5,9 +5,9 @@
 #include <cstring>
 
 // Optional suffix on the simulator's existing point-cloud message:
-// [12 float pose][N * 3 float points][rows * cols uint8 mask][MaskFooter].
+// [12 float pose][N * 3 float points][rows * cols uint8 target mask][MaskFooter].
 // A legacy message has no suffix. The depth publisher applies the mask after
-// temporal min aggregation so old scans cannot reveal the hidden box.
+// temporal min aggregation so old scans cannot reveal the hidden target.
 namespace see_then_hidden_wire {
 
 constexpr uint32_t kMagic = 0x31544853; // "SHT1" in little-endian byte order
