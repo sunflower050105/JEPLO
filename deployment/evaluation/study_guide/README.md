@@ -128,25 +128,33 @@ LiDAR path has no see-then-hidden trigger.
 
 ## 6. Run one masked trial
 
-Run each command in a **separate terminal**, starting from the repository root.
-The simulator requires the project's MuJoCo and Unitree SDK2 dependencies.
-The launcher shown below is a local rebuilt copy of the unchanged deployment
-program; generated binaries under `build/` and `output/` are ignored by Git.
-If it is absent on another machine, build the normal launcher as described in
-the [project README](../../../README.md) and use that executable.
+Run each command in a **separate Ubuntu 22.04 container terminal**, starting
+from the repository root. The simulator requires the project's MuJoCo and
+Unitree SDK2 dependencies. The host-built binary in `simulate/build/` cannot
+run in this container because its `yaml-cpp`, Boost, glibc, and C++ runtime
+requirements differ. Build in `build-ubuntu2204/` instead. Generated binaries
+under `build*/` and `output/` are ignored by Git. The original deployment
+launcher in `output/deploy` is the container-compatible one on this
+workstation; see the [project README](../../../README.md) for its normal build.
 
-Build or check the evaluation publisher:
+Build or check the simulator and evaluation publisher **inside the container**:
 
 ```bash
-cmake -S deployment/evaluation -B deployment/evaluation/build -DCMAKE_BUILD_TYPE=Release
-cmake --build deployment/evaluation/build --parallel
-ctest --test-dir deployment/evaluation/build --output-on-failure
+cmake -S deployment/unitree_mujoco/simulate \
+  -B deployment/unitree_mujoco/simulate/build-ubuntu2204 -DCMAKE_BUILD_TYPE=Release
+cmake --build deployment/unitree_mujoco/simulate/build-ubuntu2204 \
+  --target unitree_mujoco --parallel 2
+
+cmake -S deployment/evaluation -B deployment/evaluation/build-ubuntu2204 \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build deployment/evaluation/build-ubuntu2204 --parallel 2
+ctest --test-dir deployment/evaluation/build-ubuntu2204 --output-on-failure
 ```
 
 Terminal 1 — simulator:
 
 ```bash
-cd deployment/unitree_mujoco/simulate/build
+cd deployment/unitree_mujoco/simulate/build-ubuntu2204
 ./unitree_mujoco --lidar --lidar-legacy-fov --see-then-hidden \
   --see-then-hidden-distance 1.2 --see-then-hidden-preview-scans 3 \
   --see-then-hidden-target box1 \
@@ -156,7 +164,7 @@ cd deployment/unitree_mujoco/simulate/build
 Terminal 2 — simulation depth publisher:
 
 ```bash
-./deployment/evaluation/build/lidar_depth_sim --sim --fov 25x60 \
+./deployment/evaluation/build-ubuntu2204/lidar_depth_sim --sim --fov 25x60 \
   --downsample-rate 4 --stacked-frames 10 --no-cage-mask
 ```
 
@@ -176,9 +184,17 @@ Terminal 4 — reproduced policy:
 
 ```bash
 cd deployment/go2_deploy/output
-./deploy_see_then_hidden --net lo --model-dir my_policy_r2 \
-  --ood-count-threshold 15 --raw-actions
+ort_lib=/home/lin/ubuntu_22_04/onnxruntime-linux-x64-gpu-1.22.0/lib
+trt_lib=/home/lin/ubuntu_22_04/TensorRT-10.9.0.34/targets/x86_64-linux-gnu/lib
+LD_LIBRARY_PATH="$ort_lib:$trt_lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+  ./deploy --net lo --model-dir my_policy_r2 \
+  --ood-count-threshold 15 --raw-actions --trt-cache
 ```
+
+The first launch may spend time building TensorRT engines. The launcher
+validates them against its ONNX test cases, then prints a prompt to press
+**Enter** before robot control begins. Both local library directories in the
+command above are required for this GPU ONNX Runtime build.
 
 Terminal 5 — keyboard controller:
 
