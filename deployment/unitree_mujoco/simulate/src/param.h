@@ -31,6 +31,11 @@ inline struct SimulationConfig {
     std::filesystem::path lidar_pattern;
     double lidar_hz = 20.0;
     int lidar_port = 5590;
+    bool see_then_hidden = false;
+    double see_then_hidden_distance = 1.2;
+    int see_then_hidden_preview_scans = 3;
+    std::string see_then_hidden_target = "box1";
+    std::string see_then_hidden_log;
 
     void load_from_yaml(const std::string &filename) {
         auto cfg = YAML::LoadFile(filename);
@@ -69,7 +74,16 @@ inline po::variables_map helper(int argc, char **argv) {
         "lidar-pattern", po::value<std::filesystem::path>(&config.lidar_pattern),
         "Path to the Mid360 scan_mode/mid360.npy file")(
         "lidar-hz", po::value<double>(&config.lidar_hz), "LiDAR scan rate (default: 20 Hz)")(
-        "lidar-port", po::value<int>(&config.lidar_port), "LiDAR ZMQ port (default: 5590)");
+        "lidar-port", po::value<int>(&config.lidar_port), "LiDAR ZMQ port (default: 5590)")(
+        "see-then-hidden", "Sim-only box-region occlusion after a clean preview")(
+        "see-then-hidden-distance", po::value<double>(&config.see_then_hidden_distance),
+        "Box-surface distance in metres for occlusion onset (default: 1.2)")(
+        "see-then-hidden-preview-scans", po::value<int>(&config.see_then_hidden_preview_scans),
+        "Consecutive LiDAR scans that must see the target first (default: 3)")(
+        "see-then-hidden-target", po::value<std::string>(&config.see_then_hidden_target),
+        "MuJoCo box geom to hide (default: box1)")(
+        "see-then-hidden-log", po::value<std::string>(&config.see_then_hidden_log),
+        "Write per-scan diagnostic CSV to this path");
 
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -88,6 +102,15 @@ inline po::variables_map helper(int argc, char **argv) {
     }
     if (vm.count("lidar-legacy-fov")) {
         config.lidar_legacy_fov = true;
+    }
+    if (vm.count("see-then-hidden")) {
+        config.see_then_hidden = true;
+        if (!config.enable_lidar || config.see_then_hidden_distance <= 0.0 ||
+            config.see_then_hidden_preview_scans < 1) {
+            std::cerr << "--see-then-hidden requires --lidar, a positive distance, "
+                         "and at least one preview scan\n";
+            exit(EXIT_FAILURE);
+        }
     }
 
     return vm;

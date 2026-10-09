@@ -26,10 +26,14 @@ which is included as part of this source code package.
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "see_then_hidden.h"
+#include "../../../evaluation/see_then_hidden_protocol.h"
 
 // Publishes FOV-filtered Livox Mid360 point clouds in the wire format consumed
 // by simulate_python/lidar_depth_pub/lidar_depth_pub.cpp --sim:
@@ -149,6 +153,15 @@ class Mid360LidarPublisher {
 
     const std::string &error() const { return error_; }
 
+    void enableSeeThenHidden(double trigger_distance_m, int preview_scans,
+                             const std::string &target_geom, const std::string &log_path) {
+        see_then_hidden_ = std::make_unique<SeeThenHidden>(
+            trigger_distance_m, preview_scans, target_geom, legacy_fov_ ? 60 : 120,
+            log_path);
+        std::cout << "[SeeThenHidden] Enabled for " << target_geom << "; trigger at "
+                  << trigger_distance_m << " m after " << preview_scans << " visible scans\n";
+    }
+
     // Called with exclusive access to model/data after stepping the simulation.
     void update(const mjModel *model, mjData *data) {
         if (!ready_ || !model || !data)
@@ -258,7 +271,24 @@ class Mid360LidarPublisher {
 
         const size_t message_bytes =
             (kPoseFloatCount + static_cast<size_t>(ray_count) * 3) * sizeof(float);
-        zmq_send(zmq_publisher_, message_.data(), message_bytes, ZMQ_DONTWAIT);
+        if (see_then_hidden_) {
+            std::vector<uint8_t> mask;
+            const bool active = see_then_hidden_->update(
+                model, data, sensor_position, sensor_rotation, geom_ids_.data(),
+                distances_.data(), ray_count, &mask);
+            const see_then_hidden_wire::MaskFooter footer{
+                see_then_hidden_wire::kMagic, kGridRows,
+                static_cast<uint32_t>(legacy_fov_ ? 60 : 120), active ? 1U : 0U};
+            masked_message_.resize(message_bytes + mask.size() + sizeof(footer));
+            std::memcpy(masked_message_.data(), message_.data(), message_bytes);
+            std::memcpy(masked_message_.data() + message_bytes, mask.data(), mask.size());
+            std::memcpy(masked_message_.data() + message_bytes + mask.size(), &footer,
+                        sizeof(footer));
+            zmq_send(zmq_publisher_, masked_message_.data(), masked_message_.size(),
+                     ZMQ_DONTWAIT);
+        } else {
+            zmq_send(zmq_publisher_, message_.data(), message_bytes, ZMQ_DONTWAIT);
+        }
 
         const double elapsed_ms = std::chrono::duration<double, std::milli>(
                                       std::chrono::steady_clock::now() - start)
@@ -371,6 +401,8 @@ class Mid360LidarPublisher {
     std::vector<mjtNum> distances_;
     std::vector<int> geom_ids_;
     std::vector<float> message_;
+    std::vector<uint8_t> masked_message_;
+    std::unique_ptr<SeeThenHidden> see_then_hidden_;
     size_t frame_index_ = 0;
 
     const mjModel *model_ = nullptr;

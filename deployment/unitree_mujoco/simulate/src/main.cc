@@ -691,6 +691,13 @@ int main(int argc, char **argv) {
         lidar = std::make_shared<Mid360LidarPublisher>(
             param::config.lidar_port, param::config.lidar_hz,
             param::config.lidar_legacy_fov);
+        if (param::config.see_then_hidden) {
+            lidar->enableSeeThenHidden(
+                param::config.see_then_hidden_distance,
+                param::config.see_then_hidden_preview_scans,
+                param::config.see_then_hidden_target,
+                param::config.see_then_hidden_log);
+        }
         if (!lidar->loadPattern(param::config.lidar_pattern)) {
             std::cerr << "[Mid360] " << lidar->error() << std::endl;
             return 1;
