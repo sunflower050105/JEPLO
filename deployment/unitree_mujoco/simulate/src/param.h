@@ -1,6 +1,7 @@
 #pragma once
 
 #include <boost/program_options.hpp>
+#include <cmath>
 #include <filesystem>
 #include <iostream>
 #include <yaml-cpp/yaml.h>
@@ -36,6 +37,12 @@ inline struct SimulationConfig {
     int see_then_hidden_preview_scans = 3;
     std::string see_then_hidden_target = "box1";
     std::string see_then_hidden_log;
+    std::string benchmark_directory;
+    std::string benchmark_terrain = "flat";
+    std::string benchmark_box_task = "ascent";
+    double benchmark_duration = 8.0;
+    double benchmark_speed = 0.8;
+    double benchmark_min_progress_ratio = 0.8;
 
     void load_from_yaml(const std::string &filename) {
         auto cfg = YAML::LoadFile(filename);
@@ -84,6 +91,21 @@ inline po::variables_map helper(int argc, char **argv) {
         "MuJoCo box geom or body of box geoms to hide (e.g. box1 or stairs)")(
         "see-then-hidden-log", po::value<std::string>(&config.see_then_hidden_log),
         "Write per-scan diagnostic CSV to this path");
+#ifdef JEPLO_VELOCITY_BENCHMARK
+    desc.add_options()(
+        "benchmark-dir", po::value<std::string>(&config.benchmark_directory),
+        "Output directory; trial starts when its GO file appears")(
+        "benchmark-terrain", po::value<std::string>(&config.benchmark_terrain),
+        "Initial terrain for benchmark: flat or boxes")(
+        "benchmark-box-task", po::value<std::string>(&config.benchmark_box_task),
+        "Box completion: ascent (default) or legacy traverse")(
+        "benchmark-duration", po::value<double>(&config.benchmark_duration),
+        "Trial duration in simulation seconds")(
+        "benchmark-speed", po::value<double>(&config.benchmark_speed),
+        "Expected forward command in m/s, used for tracking metrics")(
+        "benchmark-min-progress-ratio", po::value<double>(&config.benchmark_min_progress_ratio),
+        "Flat success requires this fraction of command * duration (default: 0.8)");
+#endif
 
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -109,6 +131,23 @@ inline po::variables_map helper(int argc, char **argv) {
             config.see_then_hidden_preview_scans < 1) {
             std::cerr << "--see-then-hidden requires --lidar, a positive distance, "
                          "and at least one preview scan\n";
+            exit(EXIT_FAILURE);
+        }
+    }
+    if (!config.benchmark_directory.empty()) {
+        if (!config.enable_lidar ||
+            (config.benchmark_terrain != "flat" && config.benchmark_terrain != "boxes") ||
+            (config.benchmark_box_task != "ascent" && config.benchmark_box_task != "traverse") ||
+            !std::isfinite(config.benchmark_duration) || config.benchmark_duration <= 0.0 ||
+            !std::isfinite(config.benchmark_speed) || config.benchmark_speed <= 0.0 ||
+            !std::isfinite(config.benchmark_min_progress_ratio) ||
+            config.benchmark_min_progress_ratio <= 0.0 || config.benchmark_min_progress_ratio > 1.0 ||
+            config.see_then_hidden || config.enable_elastic_band || config.interface != "lo" ||
+            config.domain_id != 1 || config.use_joystick) {
+            std::cerr << "Velocity benchmark requires --lidar, terrain flat/boxes, "
+                         "box task ascent/traverse, "
+                         "finite positive duration/speed, progress ratio (0,1], "
+                         "loopback DDS domain 1, no joystick/elastic band/see-then-hidden\n";
             exit(EXIT_FAILURE);
         }
     }

@@ -1,5 +1,9 @@
 # See, then hidden: first diagnostic condition
 
+For the separate automated **0.8 versus 1.0 m/s** test with normal perception,
+saved-state videos, and success summaries, see
+[velocity_benchmark/README.md](velocity_benchmark/README.md).
+
 For the rationale, data path, and interpretation of results, read the
 [study guide](study_guide/README.md).
 

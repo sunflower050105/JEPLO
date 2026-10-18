@@ -29,6 +29,8 @@ which is included as part of this source code package.
 // simulation mutex.
 class TerrainSwitcher {
   public:
+    void setInitialTerrain(const std::string &name) { initial_terrain_ = name; }
+
     bool queueKey(int key) {
         Pending pending;
         if (key >= '1' && key <= '8') {
@@ -134,7 +136,7 @@ class TerrainSwitcher {
         model_ = model;
         enabled_ = false;
         base_body_id_ = findFirstBody(model, {"base_link", "torso_link", "pelvis"});
-        active_terrain_ = "stairs";
+        active_terrain_ = initial_terrain_;
         pre_stair_boxes_enabled_ = false;
         terrains_.clear();
         pre_stair_geom_ids_.clear();
@@ -181,7 +183,7 @@ class TerrainSwitcher {
             std::cout << "Terrain switcher: no robot base body found.\n";
             return;
         }
-        if (!findTerrain(active_terrain_)) {
+        if (active_terrain_ != "flat" && !findTerrain(active_terrain_)) {
             active_terrain_ = terrains_.front().name;
         }
 
@@ -237,7 +239,7 @@ class TerrainSwitcher {
     }
 
     void switchTerrain(mjModel *model, mjData *data, const std::string &name) {
-        if (!findTerrain(name)) {
+        if (name != "flat" && !findTerrain(name)) {
             std::cout << "Terrain switcher: '" << name
                       << "' is not available in this model.\n";
             return;
@@ -356,6 +358,7 @@ class TerrainSwitcher {
     int base_body_id_ = -1;
     bool enabled_ = false;
     bool pre_stair_boxes_enabled_ = false;
+    std::string initial_terrain_ = "stairs";
     std::string active_terrain_ = "stairs";
     std::vector<Terrain> terrains_;
     std::vector<int> pre_stair_geom_ids_;

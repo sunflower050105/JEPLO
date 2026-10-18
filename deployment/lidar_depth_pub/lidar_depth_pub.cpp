@@ -58,6 +58,7 @@ which is included as part of this source code package.
 #include <limits>
 #include <mutex>
 #include <random>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -215,10 +216,10 @@ static const char *bandPatternName(BandPattern pattern) {
 // Build a boolean cage pillar occlusion mask. Two vertical stripes at ±45°
 // azimuth, widest at the bottom rows, narrowing toward the top. Per-pillar
 // jitter and a global scale factor are randomized once.
-static void buildCageMask(bool *mask) {
+static void buildCageMask(bool *mask, std::optional<uint32_t> seed = std::nullopt) {
     std::fill(mask, mask + gGridSize, false);
 
-    std::mt19937 rng(std::random_device{}());
+    std::mt19937 rng(seed ? *seed : std::random_device{}());
     std::uniform_real_distribution<float> jitter_dist(-1.0f, 1.0f);
     std::uniform_real_distribution<float> scale_dist(0.8f, 1.2f);
 
@@ -885,6 +886,7 @@ int main(int argc, char *argv[]) {
     bool use_sim = false;
     int sim_port = 5590;
     bool enable_cage_mask = true;
+    std::optional<uint32_t> cage_seed;
     bool fov_specified = false;
     int downsample_rate = 1;
     int num_stacked = kDefaultNumStacked;
@@ -924,7 +926,24 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
             fov_specified = true;
-        } else if (arg == "--no-cage-mask") {
+        }
+#ifdef JEPLO_VELOCITY_BENCHMARK
+        else if (arg == "--cage-seed") {
+            try {
+                if (i + 1 >= argc) throw std::invalid_argument("missing seed");
+                const std::string value(argv[++i]);
+                size_t used = 0;
+                const auto seed = std::stoull(value, &used);
+                if (value.empty() || value.front() == '-' || used != value.size() || seed > UINT32_MAX)
+                    throw std::invalid_argument("invalid seed");
+                cage_seed = static_cast<uint32_t>(seed);
+            } catch (const std::exception &) {
+                std::cerr << "--cage-seed requires an unsigned 32-bit integer\n";
+                return 1;
+            }
+        }
+#endif
+        else if (arg == "--no-cage-mask") {
             enable_cage_mask = false;
         } else if (arg == "--occlusion-pattern") {
             if (i + 1 >= argc) {
@@ -963,7 +982,8 @@ int main(int argc, char *argv[]) {
     bool cage_mask[kMaxGridSize];
     std::fill(cage_mask, cage_mask + gGridSize, false);
     if (enable_cage_mask) {
-        buildCageMask(cage_mask);
+        if (cage_seed) std::cout << "[LidarDepth] Cage seed: " << *cage_seed << std::endl;
+        buildCageMask(cage_mask, cage_seed);
     } else {
         std::cout << "[LidarDepth] Cage mask disabled" << std::endl;
     }
