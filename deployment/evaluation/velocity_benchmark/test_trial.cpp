@@ -18,16 +18,28 @@ int main() {
       <body name="base_link" pos="0 0 .3"><freejoint/>
         <geom type="box" size=".2 .1 .05" mass="10"/>
         <body pos=".18 .1 -.28"><joint type="slide" axis="0 0 1"/>
-          <geom name="FL" type="sphere" size=".02"/></body>
+          <geom name="FL" type="sphere" size=".02" priority="1" condim="6" friction="0.4 0.02 0.01"/></body>
         <body pos=".18 -.1 -.28"><joint type="slide" axis="0 0 1"/>
-          <geom name="FR" type="sphere" size=".02"/></body>
+          <geom name="FR" type="sphere" size=".02" priority="1" condim="6" friction="0.4 0.02 0.01"/></body>
         <body pos="-.18 .1 -.28"><joint type="slide" axis="0 0 1"/>
-          <geom name="RL" type="sphere" size=".02"/></body>
+          <geom name="RL" type="sphere" size=".02" priority="1" condim="6" friction="0.4 0.02 0.01"/></body>
         <body pos="-.18 -.1 -.28"><joint type="slide" axis="0 0 1"/>
-          <geom name="RR" type="sphere" size=".02"/></body>
+          <geom name="RR" type="sphere" size=".02" priority="1" condim="6" friction="0.4 0.02 0.01"/></body>
       </body>
       <geom name="box2" type="box" pos="2 0 .2" size=".5 .75 .2"/>
-      <geom name="benchmark_stair_landing" type="box" pos="3.6 0 1" size=".6 .8 1"/>
+      <body name="benchmark_stairs">
+        <geom name="benchmark_step1" type="box" pos=".15 0 .1" size=".15 .8 .1" friction="3 .005 .0001"/>
+        <geom name="benchmark_step2" type="box" pos=".45 0 .2" size=".15 .8 .2" friction="3 .005 .0001"/>
+        <geom name="benchmark_step3" type="box" pos=".75 0 .3" size=".15 .8 .3" friction="3 .005 .0001"/>
+        <geom name="benchmark_step4" type="box" pos="1.05 0 .4" size=".15 .8 .4" friction="3 .005 .0001"/>
+        <geom name="benchmark_step5" type="box" pos="1.35 0 .5" size=".15 .8 .5" friction="3 .005 .0001"/>
+        <geom name="benchmark_step6" type="box" pos="1.65 0 .6" size=".15 .8 .6" friction="3 .005 .0001"/>
+        <geom name="benchmark_step7" type="box" pos="1.95 0 .7" size=".15 .8 .7" friction="3 .005 .0001"/>
+        <geom name="benchmark_step8" type="box" pos="2.25 0 .8" size=".15 .8 .8" friction="3 .005 .0001"/>
+        <geom name="benchmark_step9" type="box" pos="2.55 0 .9" size=".15 .8 .9" friction="3 .005 .0001"/>
+        <geom name="benchmark_step10" type="box" pos="2.85 0 1" size=".15 .8 1" friction="3 .005 .0001"/>
+        <geom name="benchmark_stair_landing" type="box" pos="3.6 0 1" size=".6 .8 1" friction="3 .005 .0001"/>
+      </body>
     </worldbody></mujoco>)";
     char error[1024];
     mjModel *model = mj_loadXML(xml.c_str(), nullptr, error, sizeof(error));
@@ -98,6 +110,20 @@ int main() {
     run("stair_last_tread_only", "benchmark_stairs", 0.8, [](mjData *d, double t) {
         if (t >= 0.2) { d->qpos[0] = 2.85; d->qpos[2] = 2.299; }
     }, "timeout");
+
+    // A higher stair setting must become effective at a priority-one foot contact.
+    const auto friction_dir = root / "stair_friction_1";
+    std::filesystem::create_directory(friction_dir);
+    mjData *friction_data = mj_makeData(model);
+    mj_forward(model, friction_data);
+    velocity_benchmark::Trial friction_trial({friction_dir.string(), "benchmark_stairs",
+                                               1.0, 0.8, 0.8, "ascent", 1.0});
+    friction_trial.update(model, friction_data);
+    const int stair_id = mj_name2id(model, mjOBJ_GEOM, "benchmark_step1");
+    require(model->geom_priority[stair_id] == 1, "Stair friction priority was not raised");
+    require(std::abs(model->geom_friction[3 * stair_id] - 1.0) < 1e-9,
+            "Stair sliding friction was not changed");
+    mj_deleteData(friction_data);
 
     // Geometric and temporal checks independent of the trial terminal conditions.
     using velocity_benchmark::BoxAscent;

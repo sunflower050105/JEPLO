@@ -53,6 +53,7 @@ which is included as part of this source code package.
 #include "zmq.hpp"
 
 #include "advanced_gamepad.hpp"
+#include "imu_yaw_hold.h"
 
 // Unitree SDK headers
 #include "unitree/common/json/json.hpp"
@@ -667,6 +668,10 @@ struct LocomotionConfig {
     float forward_clip = 2.5;
     float lateral_clip = 1.5;
     float angular_clip = 3.0;
+    bool imu_yaw_hold = false;
+    float yaw_hold_kp = 2.0f;
+    float yaw_hold_kd = 0.25f;
+    float yaw_hold_max_wz = 1.0f;
 
     // Safety/OOD detection thresholds
     float safety_max_tau_threshold = 30.0f;
@@ -2079,6 +2084,7 @@ class LocomotionNode {
 
         // Gamepad direct control or ZMQ commands
         if (gamepad_control_mode_) {
+            imu_yaw_hold_.reset();
             const float active_linear_scale =
                 (!config_.use_joystick_gamepad_control && secondary_button_linear_scale_active_)
                     ? config_.gamepad_linear_scale_2
@@ -2125,6 +2131,24 @@ class LocomotionNode {
         auto ang_vel = std::array<float, 3>{
             low_state_.imu_state().gyroscope()[0], low_state_.imu_state().gyroscope()[1],
             low_state_.imu_state().gyroscope()[2]};
+        if (config_.imu_yaw_hold && !gamepad_control_mode_) {
+            const auto hold = imu_yaw_hold_.update(
+                quat.w(), quat.x(), quat.y(), quat.z(), ang_vel[2], cmd_[0],
+                config_.yaw_hold_kp, config_.yaw_hold_kd,
+                std::min(config_.yaw_hold_max_wz, config_.angular_clip));
+            if (!hold.valid) {
+                // Do not drive forward without the IMU used for heading feedback.
+                cmd_.setZero();
+                if (yaw_hold_log_counter_++ % 50 == 0)
+                    LOG_ERROR("IMU yaw hold: invalid quaternion or gyro; zeroing command");
+            } else {
+                cmd_(2) = hold.wz;
+                if (hold.active && yaw_hold_log_counter_++ % 50 == 0) {
+                    LOG_INFO("IMU yaw hold: target=%.3f measured=%.3f error=%.3f wz=%.3f",
+                             hold.target_yaw, hold.measured_yaw, hold.error, hold.wz);
+                }
+            }
+        }
         auto gravity_orientation = get_gravity_orientation_eigen(quat);
 
         // Build proprioception observation (45 dims)
@@ -2660,6 +2684,8 @@ class LocomotionNode {
     bool initialized_;
     bool gamepad_control_mode_ = false; // R1 toggle: false=ZMQ, true=gamepad direct
     bool secondary_button_linear_scale_active_ = false; // R2 toggle in buttons mode
+    ImuYawHold imu_yaw_hold_;
+    int yaw_hold_log_counter_ = 0;
     bool safety_fault_ = false;
     bool safety_fault_logged_ = false;
     int safety_ood_counter_ = 0;
@@ -2699,6 +2725,11 @@ int main(int argc, char *argv[]) {
         "Override consecutive OOD sample count required before safety fault",
         cxxopts::value<int>())(
         "raw-actions", "Disable action smoothing and hip scaling; apply action scale only")(
+        "imu-yaw-hold", "Hold the initial IMU yaw while a forward ZMQ command is active (simulation only)")(
+        "yaw-hold-kp", "IMU yaw proportional gain", cxxopts::value<float>()->default_value("2.0"))(
+        "yaw-hold-kd", "IMU yaw gyro damping gain", cxxopts::value<float>()->default_value("0.25"))(
+        "yaw-hold-max-wz", "Maximum corrective yaw rate in rad/s",
+        cxxopts::value<float>()->default_value("1.0"))(
         "h,help", "Print usage");
     auto args = options.parse(argc, argv);
 
@@ -2752,6 +2783,24 @@ int main(int argc, char *argv[]) {
     nlohmann::json yaml_conf = nlohmann::json::parse(conf_file);
 
     config.use_sim = net_interface == "lo";
+    config.imu_yaw_hold = args.count("imu-yaw-hold") > 0;
+    config.yaw_hold_kp = args["yaw-hold-kp"].as<float>();
+    config.yaw_hold_kd = args["yaw-hold-kd"].as<float>();
+    config.yaw_hold_max_wz = args["yaw-hold-max-wz"].as<float>();
+    if (config.imu_yaw_hold && !config.use_sim) {
+        LOG_ERROR("--imu-yaw-hold is available only with --net lo");
+        return 1;
+    }
+    if (!std::isfinite(config.yaw_hold_kp) || config.yaw_hold_kp < 0.0f ||
+        !std::isfinite(config.yaw_hold_kd) || config.yaw_hold_kd < 0.0f ||
+        !std::isfinite(config.yaw_hold_max_wz) || config.yaw_hold_max_wz <= 0.0f) {
+        LOG_ERROR("IMU yaw hold gains must be finite and non-negative; max wz must be positive");
+        return 1;
+    }
+    if (config.imu_yaw_hold) {
+        fmt::print("IMU yaw hold: kp={}, kd={}, max_wz={} rad/s\n",
+                   config.yaw_hold_kp, config.yaw_hold_kd, config.yaw_hold_max_wz);
+    }
     config.kp = yaml_conf["kp"].get<float>();
     config.kd = yaml_conf["kd"].get<float>();
     config.forward_clip = yaml_conf["linear_velocity_clip"].get<float>();

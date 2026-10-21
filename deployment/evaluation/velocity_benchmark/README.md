@@ -128,6 +128,35 @@ deployment/evaluation/velocity_benchmark/.venv/bin/python \
   --model-dir my_policy_r2 --terrain benchmark_stairs --repeats 1 --video
 ```
 
+On this course the controller holds the IMU heading measured when the first
+forward command arrives. By default the runner publishes a fixed `(vx, vy, wz)`
+of `(0.8 or 1.0, 0, 0)` m/s and rad/s. Inside the controller, a yaw feedback loop
+changes only the policy's `wz` request: `clamp(2.0 * wrapped_yaw_error -
+0.25 * imu_gyro_z, -1.0, 1.0)` rad/s. The IMU quaternion and gyro come from
+the normal simulated LowState, not the benchmark's ground-truth status. The
+reference resets at a stopped command; each trial starts a new controller.
+Set `--yaw-hold-kp`, `--yaw-hold-kd`, or `--yaw-hold-max-wz` to tune this
+behavior. Use `--no-stair-yaw-hold` for an open-loop yaw comparison. The
+controller writes target, measured yaw, error, and corrective `wz` to
+`deploy.log` about once per second. `sent_commands.csv` records the external
+commands, whose `command_wz` stays zero. The hold cannot correct lateral
+displacement or create traction if the robot is physically stuck; inspect the
+video and heading log before interpreting a failure.
+
+The original stair blocks specify sliding friction `3.0`, but each foot has
+contact priority 1 and friction `0.4`, so the effective foot-stair sliding
+friction is `0.4`. This remains the default baseline. The isolated
+`--stair-contact-friction 1.0` diagnostic raises the stair geoms to priority 1
+and sets their sliding friction to `1.0`, leaving the ordinary scene and other
+terrain tests alone. The optional `--stair-centering` diagnostic uses the
+simulator's measured lateral position and the stair body's centerline to
+publish `vy = clamp(-0.8 * lateral_error, -0.3, 0.3)` m/s; `vx` stays fixed,
+and yaw hold still uses IMU feedback. Override those values with `--center-kp`
+and `--center-max-vy`. This simulator-pose feedback is privileged information,
+so its results should be labelled as a diagnostic, not a reproduction of the
+paper's benchmark. Keep each friction/centering condition in its own output
+directory and compare the same seeds across conditions.
+
 Success (`stair_landing_v1`) means all four feet fit on the top landing, each
 has made geometric contact with its top within 0.5 s, and the base is within
 the landing footprint, at least 0.16 m above its surface, and tilted no more
@@ -224,8 +253,9 @@ ascent result. Freeze the selected criterion before the new data collection.
 
 The selected checkpoint, controller settings, terrain, sensor settings, and
 starting-pose tolerances are fixed. Only forward command changes within a pair;
-lateral and yaw commands stay zero. Pair order alternates to reduce a systematic
-0.8-first/1.0-second ordering effect.
+the runner publishes zero lateral and yaw commands. Stair trials additionally
+apply the IMU heading correction above inside the controller. Pair order
+alternates to reduce a systematic 0.8-first/1.0-second ordering effect.
 
 | Setting | Default here |
 | --- | --- |
@@ -299,6 +329,12 @@ the pilot success count. Check short-window RTF messages as well: a whole-trial
 average can hide a brief slowdown. Controller `[HISTORY]` messages reporting
 identical depth channels are retained; this experiment does not fix the existing
 depth-buffer update behavior.
+
+If the controller enters its OOD safety stop before the forward command, the
+runner marks that attempt invalid and stops the batch. A safety stop after the
+trial begins remains a policy failure and is recorded as
+`controller_safety_fault` in the exported results. Inspect invalid starts and
+retry them separately before estimating a success rate.
 
 The command sender and simulator communicate asynchronously. The GO marker and
 first forward message occur in one runner iteration, but the controller consumes

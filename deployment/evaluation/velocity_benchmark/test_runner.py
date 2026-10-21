@@ -1,12 +1,22 @@
 import struct
 import unittest
 from pathlib import Path
+from unittest import mock
 import xml.etree.ElementTree as ET
 
 import run
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_port_probe_uses_reuseaddr_and_checks_for_a_listener(self):
+        with mock.patch.object(run.socket, "socket") as make_socket:
+            sock = make_socket.return_value.__enter__.return_value
+            run.check_tcp_port_available(5560)
+            sock.setsockopt.assert_called_once_with(run.socket.SOL_SOCKET,
+                                                    run.socket.SO_REUSEADDR, 1)
+            sock.bind.assert_called_once_with(("0.0.0.0", 5560))
+            sock.listen.assert_called_once_with(1)
+
     def test_depth_trailer_and_malformed_frame(self):
         frame = struct.pack("=II", 60, 25) + bytes(60 * 25 * 4) + struct.pack("=QQ", 100, 200)
         self.assertEqual(run.decode_depth(frame), (60, 25, 100, 200))
@@ -36,6 +46,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertNotIn("--see-then-hidden", first["simulator"])
         self.assertNotIn("--scene", first["simulator"])
         self.assertNotIn("--no-cage-mask", first["depth"])
+        self.assertNotIn("--imu-yaw-hold", first["deploy"])
 
     def test_box_task_default_and_legacy_selection(self):
         for task, rule in (("ascent", "box_ascent_v2"), ("traverse", "box_traverse_v1")):
@@ -60,6 +71,34 @@ class ProtocolTests(unittest.TestCase):
                          "benchmark_stairs")
         self.assertEqual(first["simulator"][first["simulator"].index("--scene") + 1],
                          str(run.STAIR_SCENE))
+        self.assertEqual(first["simulator"][first["simulator"].index(
+            "--benchmark-stair-contact-friction") + 1], "0.4")
+        self.assertIn("--imu-yaw-hold", first["deploy"])
+        self.assertEqual(first["deploy"][first["deploy"].index("--yaw-hold-kp") + 1], "2.0")
+        self.assertEqual(first["deploy"][first["deploy"].index("--yaw-hold-max-wz") + 1], "1.0")
+        open_loop = run.parser().parse_args(["--terrain", "benchmark_stairs", "--no-stair-yaw-hold"])
+        open_loop.duration = 16.0
+        self.assertNotIn("--imu-yaw-hold",
+                         run.commands(open_loop, Path("/tmp/stairs_open"), 0.8, 17)["deploy"])
+
+    def test_stair_friction_and_centering_conditions_are_independent(self):
+        args = run.parser().parse_args(["--terrain", "benchmark_stairs",
+                                        "--stair-contact-friction", "1.0", "--stair-centering"])
+        args.duration = 16.0
+        commands = run.commands(args, Path("/tmp/stairs_friction_center"), 0.8, 17)
+        sim = commands["simulator"]
+        self.assertEqual(sim[sim.index("--benchmark-stair-contact-friction") + 1], "1.0")
+        self.assertIn("--imu-yaw-hold", commands["deploy"])
+        self.assertAlmostEqual(run.stair_centering_vy(
+            {"y_m": 0.25, "course_center_y_m": 0.05}, 0.8, 0.3), -0.16)
+        self.assertEqual(run.stair_centering_vy(
+            {"y_m": -1.0, "course_center_y_m": 0.0}, 0.8, 0.3), 0.3)
+
+    def test_controller_fault_before_command_is_invalid(self):
+        with self.assertRaisesRegex(RuntimeError, "before the trial command"):
+            run.controller_safety_fault("[ERROR] OOD safety fault: max_tau=35", False)
+        self.assertTrue(run.controller_safety_fault("[ERROR] OOD safety fault: max_tau=35", True))
+        self.assertFalse(run.controller_safety_fault("Current cmd: x: 1.00", True))
 
     def test_stair_scene_has_ten_requested_rises_and_runs(self):
         scene = ET.parse(run.STAIR_SCENE)

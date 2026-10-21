@@ -730,7 +730,8 @@ int main(int argc, char **argv) {
             velocity_benchmark::Config{param::config.benchmark_directory,
                 param::config.benchmark_terrain, param::config.benchmark_duration,
                 param::config.benchmark_speed, param::config.benchmark_min_progress_ratio,
-                param::config.benchmark_box_task});
+                param::config.benchmark_box_task,
+                param::config.benchmark_stair_contact_friction});
 
     std::thread unitree_thread(UnitreeSdk2BridgeThread, nullptr);
 

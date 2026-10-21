@@ -22,6 +22,7 @@ struct Config {
     double speed = 0.8;
     double min_progress_ratio = 0.8;
     std::string box_task = "ascent";
+    double stair_contact_friction = 0.4;
 };
 
 class Trial {
@@ -29,7 +30,7 @@ class Trial {
     explicit Trial(Config config) : config_(std::move(config)) {}
 
     // Called with the simulation mutex held, after stepping and updating terrain.
-    bool update(const mjModel *m, const mjData *d) {
+    bool update(mjModel *m, const mjData *d) {
         if (finished_) return true;
         if (!initialized_) initialize(m, d);
         if (d->time < last_sim_time_)
@@ -54,7 +55,10 @@ class Trial {
             status << std::setprecision(12) << "{\"sim_time_s\":" << d->time
                    << ",\"x_m\":" << p[0] << ",\"y_m\":" << p[1]
                    << ",\"z_m\":" << p[2] << ",\"yaw_deg\":" << yaw
-                   << ",\"tilt_deg\":" << tilt << ",\"armed\":"
+                   << ",\"tilt_deg\":" << tilt;
+            if (config_.terrain == "benchmark_stairs")
+                status << ",\"course_center_y_m\":" << course_center_y_;
+            status << ",\"armed\":"
                    << (armed_ ? "true" : "false") << "}\n";
             status.close();
             std::filesystem::rename(path("status.tmp"), path("status.json"));
@@ -145,6 +149,9 @@ class Trial {
                    << "  \"scoring_rule\": \"" << scoringRule() << "\",\n"
                    << "  \"mujoco_version\": \"" << mj_versionString() << "\",\n"
                    << "  \"command_mps\": " << config_.speed << ",\n"
+                   << "  \"stair_contact_friction\": "
+                   << (config_.terrain == "benchmark_stairs" ? config_.stair_contact_friction : 0.0)
+                   << ",\n"
                    << "  \"duration_s\": " << elapsed << ",\n"
                    << "  \"wall_duration_s\": " << wall_duration << ",\n"
                    << "  \"real_time_factor\": " << elapsed / std::max(wall_duration, 1e-9) << ",\n"
@@ -193,7 +200,7 @@ class Trial {
     std::string path(const char *name) const {
         return (std::filesystem::path(config_.directory) / name).string();
     }
-    void initialize(const mjModel *m, const mjData *d) {
+    void initialize(mjModel *m, const mjData *d) {
         if (config_.terrain != "flat" && config_.terrain != "boxes" &&
             config_.terrain != "benchmark_stairs")
             throw std::runtime_error("Unknown benchmark terrain");
@@ -203,6 +210,31 @@ class Trial {
         if (base_id_ < 0) throw std::runtime_error("Velocity benchmark requires Go2 base_link");
         if (!std::filesystem::is_directory(config_.directory))
             throw std::runtime_error("Benchmark directory does not exist");
+        if (config_.terrain == "benchmark_stairs") {
+            const int body = mj_name2id(m, mjOBJ_BODY, "benchmark_stairs");
+            if (body < 0) throw std::runtime_error("Benchmark stair body is missing");
+            course_center_y_ = d->xpos[3 * body + 1];
+            for (const char *foot : {"FL", "FR", "RL", "RR"}) {
+                const int id = mj_name2id(m, mjOBJ_GEOM, foot);
+                if (id < 0 || m->geom_priority[id] != 1 ||
+                    std::abs(m->geom_friction[3 * id] - 0.4) > 1e-6)
+                    throw std::runtime_error("Expected Go2 foot friction 0.4 and priority 1");
+            }
+            for (int step = 1; step <= 11; ++step) {
+                const std::string name = step == 11 ? "benchmark_stair_landing" :
+                    "benchmark_step" + std::to_string(step);
+                const int id = mj_name2id(m, mjOBJ_GEOM, name.c_str());
+                if (id < 0) throw std::runtime_error("Benchmark stair geom is missing: " + name);
+                if (config_.stair_contact_friction > 0.4) {
+                    // Equal foot/stair priority preserves six-dimensional contacts;
+                    // MuJoCo then takes the larger sliding friction coefficient.
+                    m->geom_priority[id] = 1;
+                    m->geom_friction[3 * id] = config_.stair_contact_friction;
+                }
+            }
+            std::cout << "[VelocityTrial] effective foot-stair sliding friction="
+                      << config_.stair_contact_friction << std::endl;
+        }
         last_sim_time_ = d->time;
         initialized_ = true;
     }
@@ -216,5 +248,6 @@ class Trial {
     double last_sim_time_ = 0, next_status_ = 0, next_sample_ = 0;
     double t0_ = 0, x0_ = 0, y0_ = 0, last_x_ = 0, last_sample_ = 0;
     double goal_x_ = 0, goal_time_ = -1, error_integral_ = 0, max_tilt_ = 0, fall_duration_ = 0;
+    double course_center_y_ = 0;
 };
 } // namespace velocity_benchmark

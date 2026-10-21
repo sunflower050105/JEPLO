@@ -52,6 +52,14 @@ def decode_depth(message):
     return width, height, scan_receive_ns, publish_ns
 
 
+def check_tcp_port_available(port):
+    """Reject live listeners without treating a prior trial's TIME_WAIT as occupied."""
+    with socket.socket() as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("0.0.0.0", port))
+        sock.listen(1)
+
+
 def commands(args, trial, speed, seed):
     sim = [str(args.sim_bin), "--lidar", "--lidar-hz", str(args.lidar_hz),
            "--network", "lo", "--domain_id", "1", "--benchmark-dir", str(trial),
@@ -60,7 +68,8 @@ def commands(args, trial, speed, seed):
            "--benchmark-duration", str(args.duration), "--benchmark-min-progress-ratio",
            str(args.min_progress_ratio)]
     if args.terrain == "benchmark_stairs":
-        sim.extend(["--scene", str(STAIR_SCENE)])
+        sim.extend(["--scene", str(STAIR_SCENE), "--benchmark-stair-contact-friction",
+                    str(args.stair_contact_friction)])
     if args.legacy_lidar_fov:
         sim.append("--lidar-legacy-fov")
     depth = [str(args.depth_bin), "--sim", "--fov", args.fov,
@@ -70,6 +79,10 @@ def commands(args, trial, speed, seed):
         depth.append("--no-cage-mask")
     policy = [str(args.deploy_bin), "--net", "lo", "--model-dir", args.model_dir,
               "--ood-count-threshold", "15", "--raw-actions", "--trt-cache"]
+    if args.terrain == "benchmark_stairs" and not args.no_stair_yaw_hold:
+        policy.extend(["--imu-yaw-hold", "--yaw-hold-kp", str(args.yaw_hold_kp),
+                       "--yaw-hold-kd", str(args.yaw_hold_kd),
+                       "--yaw-hold-max-wz", str(args.yaw_hold_max_wz)])
     return {"simulator": sim, "depth": depth, "deploy": policy}
 
 
@@ -79,6 +92,21 @@ def scoring_rule(args):
     if args.terrain == "benchmark_stairs":
         return "stair_landing_v1"
     return "box_ascent_v2" if args.box_task == "ascent" else "box_traverse_v1"
+
+
+def stair_centering_vy(status, kp, max_vy):
+    """Simulation-pose diagnostic: strafe toward the stair body centerline."""
+    error = status["y_m"] - status["course_center_y_m"]
+    if not math.isfinite(error):
+        raise RuntimeError("Non-finite stair lateral position from simulator")
+    return max(-max_vy, min(max_vy, -kp * error))
+
+
+def controller_safety_fault(log_chunk, trial_armed):
+    faulted = "OOD safety fault" in log_chunk
+    if faulted and not trial_armed:
+        raise RuntimeError("Controller entered OOD safety stop before the trial command")
+    return faulted
 
 
 def summarize(results):
@@ -102,7 +130,7 @@ def export_results(output, results):
     fields = ["pair_id", "command_mps", "terrain", "box_task", "scoring_rule",
               "valid", "success", "outcome", "duration_s", "ascent_time_s",
               "progress_m", "mean_speed_mps", "speed_rmse_mps", "max_tilt_deg",
-              "real_time_factor", "timing_ok", "directory", "error"]
+              "real_time_factor", "timing_ok", "controller_safety_fault", "directory", "error"]
     with (output / "results.csv").open("w", newline="") as stream:
         writer = csv.DictWriter(stream, fields, extrasaction="ignore")
         writer.writeheader()
@@ -129,6 +157,15 @@ def preflight(args):
     cfg = json.loads((args.deploy_bin.parent / "config.json").read_text())
     if max(args.speeds) > cfg["linear_velocity_clip"]:
         raise RuntimeError("Requested speed exceeds deployment linear_velocity_clip.")
+    if args.terrain == "benchmark_stairs" and not args.no_stair_yaw_hold:
+        help_result = subprocess.run([str(args.deploy_bin), "--help"], capture_output=True, text=True,
+                                     cwd=args.deploy_bin.parent)
+        if help_result.returncode != 0 or "imu-yaw-hold" not in help_result.stdout:
+            raise RuntimeError("Deploy executable lacks IMU yaw hold support; rebuild deploy and copy the new binary to output/deploy.")
+    if args.terrain == "benchmark_stairs":
+        help_result = subprocess.run([str(args.sim_bin), "--help"], capture_output=True, text=True)
+        if help_result.returncode != 0 or "benchmark-stair-contact-friction" not in help_result.stdout:
+            raise RuntimeError("Simulator lacks stair friction control; rebuild unitree_mujoco_velocity.")
     model = args.deploy_bin.parent / "model" / args.model_dir
     for name in ("policy.onnx", "sensor_estimator.onnx"):
         if not (model / name).is_file():
@@ -136,11 +173,10 @@ def preflight(args):
     if not os.environ.get("DISPLAY"):
         raise RuntimeError("DISPLAY is required for this local MuJoCo simulator. Run from a desktop container terminal.")
     for port in (5560, 5562, 5590):
-        with socket.socket() as sock:
-            try:
-                sock.bind(("0.0.0.0", port))
-            except OSError as exc:
-                raise RuntimeError(f"Port {port} is occupied. Close the old simulator/depth/controller processes.") from exc
+        try:
+            check_tcp_port_available(port)
+        except OSError as exc:
+            raise RuntimeError(f"Port {port} has a live listener. Close the old simulator/depth/controller processes.") from exc
     # DDS has no exclusive port binding: reject a second controller/simulator.
     for entry in Path("/proc").iterdir():
         if not entry.name.isdigit():
@@ -199,6 +235,7 @@ def run_trial(args, directory, speed, seed):
     last_sim = None
     sim_changed_at = started
     policy_ready = policy_running = False
+    safety_fault_during_trial = False
     next_tick = started
     try:
         for name in ("simulator", "depth", "deploy"):
@@ -225,16 +262,20 @@ def run_trial(args, directory, speed, seed):
             while True:
                 now = time.monotonic()
                 if (directory / "result.json").exists():
+                    safety_fault_during_trial |= controller_safety_fault(
+                        policy_log.read(), armed_at is not None)
                     result = json.loads((directory / "result.json").read_text())
                     if result.get("scoring_rule") != scoring_rule(args):
                         raise RuntimeError("Simulator scoring rule differs from requested rule; rebuild the benchmark.")
                     result["valid"] = True
                     result["timing_ok"] = 0.95 <= result["real_time_factor"] <= 1.05
+                    result["controller_safety_fault"] = safety_fault_during_trial
                     return result
                 for name, child in zip(("simulator", "depth", "deploy"), children):
                     if child.poll() is not None:
                         raise RuntimeError(f"{name} exited with {child.returncode}; see {name}.log")
                 text = policy_log.read()
+                safety_fault_during_trial |= controller_safety_fault(text, armed_at is not None)
                 policy_ready |= "robot ready" in text
                 policy_running |= "Current cmd:" in text
                 status = read_status(directory)
@@ -279,8 +320,13 @@ def run_trial(args, directory, speed, seed):
                     if now - armed_at > max(30, args.duration * 4):
                         raise RuntimeError("Trial wall timeout; inspect simulation real-time factor.")
                 velocity = speed if armed_at is not None else 0.0
-                publisher.send(struct.pack("=fff", velocity, 0.0, 0.0))
-                cmd_csv.writerow([time.time_ns(), velocity, 0, 0, "trial" if armed_at else "startup"])
+                lateral = 0.0
+                if armed_at is not None and args.terrain == "benchmark_stairs" and args.stair_centering:
+                    if status is None or "course_center_y_m" not in status:
+                        raise RuntimeError("Stair centering requires fresh course center status from simulator")
+                    lateral = stair_centering_vy(status, args.center_kp, args.center_max_vy)
+                publisher.send(struct.pack("=fff", velocity, lateral, 0.0))
+                cmd_csv.writerow([time.time_ns(), velocity, lateral, 0, "trial" if armed_at else "startup"])
                 next_tick += 0.02
                 delay = next_tick - time.monotonic()
                 if delay > 0:
@@ -301,11 +347,25 @@ def run_trial(args, directory, speed, seed):
 
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--speeds", type=float, nargs="+", default=[0.8, 1.0])
+    p.add_argument("--speeds", type=float, nargs="+", default=[0.5, 1.0])
     p.add_argument("--repeats", type=int, default=1, help="Paired trials per speed, run sequentially")
     p.add_argument("--terrain", choices=["flat", "boxes", "benchmark_stairs"], default="flat")
     p.add_argument("--box-task", choices=["ascent", "traverse"], default="ascent",
                    help="Boxes: climb onto box2 (default), or legacy far-edge crossing")
+    p.add_argument("--no-stair-yaw-hold", action="store_true",
+                   help="Disable IMU heading correction on benchmark_stairs for comparison")
+    p.add_argument("--stair-contact-friction", type=float, choices=[0.4, 1.0], default=0.4,
+                   help="Effective foot-stair sliding friction, baseline 0.4 or diagnostic 1.0")
+    p.add_argument("--stair-centering", action="store_true",
+                   help="Use simulator lateral pose to command body-frame vy toward stair center")
+    p.add_argument("--center-kp", type=float, default=0.8,
+                   help="Lateral command gain in (m/s)/m for stair centering")
+    p.add_argument("--center-max-vy", type=float, default=0.3,
+                   help="Maximum stair centering lateral command in m/s")
+    p.add_argument("--yaw-hold-kp", type=float, default=2.0)
+    p.add_argument("--yaw-hold-kd", type=float, default=0.25)
+    p.add_argument("--yaw-hold-max-wz", type=float, default=1.0,
+                   help="Maximum stair heading correction in rad/s")
     p.add_argument("--duration", type=float, help="Simulation seconds; flat=8, boxes=12, benchmark_stairs=16")
     p.add_argument("--warmup", type=float, default=2.0)
     p.add_argument("--min-progress-ratio", type=float, default=0.8)
@@ -341,6 +401,14 @@ def main():
     }[args.terrain]
     if args.terrain == "benchmark_stairs" and args.box_task != "ascent":
         p.error("--box-task applies only to the boxes terrain.")
+    if args.terrain != "benchmark_stairs" and (args.stair_centering or args.stair_contact_friction != 0.4):
+        p.error("Stair centering and stair friction settings require --terrain benchmark_stairs.")
+    if not math.isfinite(args.center_kp) or args.center_kp <= 0 or \
+            not math.isfinite(args.center_max_vy) or args.center_max_vy <= 0:
+        p.error("Stair centering gain and lateral limit must be finite and positive.")
+    if not all(math.isfinite(x) and x >= 0 for x in (args.yaw_hold_kp, args.yaw_hold_kd)) or \
+            not math.isfinite(args.yaw_hold_max_wz) or args.yaw_hold_max_wz <= 0:
+        p.error("Yaw hold gains must be finite and non-negative; max wz must be positive.")
     values = args.speeds + [args.duration, args.warmup, args.lidar_hz, args.startup_timeout]
     if not all(math.isfinite(x) and x > 0 for x in values):
         p.error("Speeds, duration, warmup, LiDAR rate, and timeout must be finite and positive.")

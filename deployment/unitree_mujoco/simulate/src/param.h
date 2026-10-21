@@ -43,6 +43,7 @@ inline struct SimulationConfig {
     double benchmark_duration = 8.0;
     double benchmark_speed = 0.8;
     double benchmark_min_progress_ratio = 0.8;
+    double benchmark_stair_contact_friction = 0.4;
 
     void load_from_yaml(const std::string &filename) {
         auto cfg = YAML::LoadFile(filename);
@@ -104,7 +105,10 @@ inline po::variables_map helper(int argc, char **argv) {
         "benchmark-speed", po::value<double>(&config.benchmark_speed),
         "Expected forward command in m/s, used for tracking metrics")(
         "benchmark-min-progress-ratio", po::value<double>(&config.benchmark_min_progress_ratio),
-        "Flat success requires this fraction of command * duration (default: 0.8)");
+        "Flat success requires this fraction of command * duration (default: 0.8)")(
+        "benchmark-stair-contact-friction",
+        po::value<double>(&config.benchmark_stair_contact_friction),
+        "Effective stair foot sliding friction for diagnostic runs (0.4 or 1.0)");
 #endif
 
     po::variables_map vm;
@@ -144,6 +148,10 @@ inline po::variables_map helper(int argc, char **argv) {
             !std::isfinite(config.benchmark_speed) || config.benchmark_speed <= 0.0 ||
             !std::isfinite(config.benchmark_min_progress_ratio) ||
             config.benchmark_min_progress_ratio <= 0.0 || config.benchmark_min_progress_ratio > 1.0 ||
+            (config.benchmark_stair_contact_friction != 0.4 &&
+             config.benchmark_stair_contact_friction != 1.0) ||
+            (config.benchmark_terrain != "benchmark_stairs" &&
+             config.benchmark_stair_contact_friction != 0.4) ||
             config.see_then_hidden || config.enable_elastic_band || config.interface != "lo" ||
             config.domain_id != 1 || config.use_joystick) {
             std::cerr << "Velocity benchmark requires --lidar, terrain flat/boxes/benchmark_stairs, "
