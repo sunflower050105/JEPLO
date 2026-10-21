@@ -33,7 +33,7 @@ class TerrainSwitcher {
 
     bool queueKey(int key) {
         Pending pending;
-        if (key >= '1' && key <= '8') {
+        if (key >= '1' && key <= '9') {
             pending.type = Command::kSwitch;
             pending.terrain = kTerrainDefinitions[key - '1'].name;
         } else if (key == 'B') {
@@ -95,7 +95,7 @@ class TerrainSwitcher {
         mjtNum front_offset;
     };
 
-    inline static constexpr std::array<TerrainDefinition, 8> kTerrainDefinitions = {{
+    inline static constexpr std::array<TerrainDefinition, 9> kTerrainDefinitions = {{
         {"stairs", "stairs", 0.0},
         {"boxes", "boxes", 0.0},
         {"gap", "gap", 0.0},
@@ -104,6 +104,7 @@ class TerrainSwitcher {
         {"bumped_stairs", "stairs with riser bumps", 0.0},
         {"short_box_stairs", "five-step stairs with boxes", 0.0},
         {"discrete_grid", "discrete grid terrain", 0.0},
+        {"benchmark_stairs", "ten 20cm-rise, 30cm-run stairs", 0.0},
     }};
     inline static constexpr std::array<const char *, 3> kPreStairGeomNames = {
         "pre1", "pre2", "pre3"};
@@ -348,7 +349,7 @@ class TerrainSwitcher {
             << "Terrain switcher keys: Ctrl+1 stairs, Ctrl+2 boxes, Ctrl+3 gap, "
                "Ctrl+4 overhanging boxes, Ctrl+5 pyramid stairs, "
                "Ctrl+6 bumped stairs, Ctrl+7 five-step box stairs, "
-               "Ctrl+8 discrete grid, Ctrl+B toggle pre-stair boxes, "
+               "Ctrl+8 discrete grid, Ctrl+9 benchmark stairs, Ctrl+B toggle pre-stair boxes, "
                "Ctrl+R reposition current terrain in front of robot.\n";
     }
 

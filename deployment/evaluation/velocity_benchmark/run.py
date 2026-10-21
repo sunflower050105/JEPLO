@@ -18,6 +18,7 @@ import time
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
+STAIR_SCENE = ROOT / "deployment/unitree_mujoco/unitree_robots/go2/scene_benchmark_stairs.xml"
 
 
 def write_json(path, value):
@@ -58,6 +59,8 @@ def commands(args, trial, speed, seed):
            "--benchmark-box-task", args.box_task,
            "--benchmark-duration", str(args.duration), "--benchmark-min-progress-ratio",
            str(args.min_progress_ratio)]
+    if args.terrain == "benchmark_stairs":
+        sim.extend(["--scene", str(STAIR_SCENE)])
     if args.legacy_lidar_fov:
         sim.append("--lidar-legacy-fov")
     depth = [str(args.depth_bin), "--sim", "--fov", args.fov,
@@ -73,6 +76,8 @@ def commands(args, trial, speed, seed):
 def scoring_rule(args):
     if args.terrain == "flat":
         return "flat_progress_v1"
+    if args.terrain == "benchmark_stairs":
+        return "stair_landing_v1"
     return "box_ascent_v2" if args.box_task == "ascent" else "box_traverse_v1"
 
 
@@ -112,6 +117,8 @@ def export_results(output, results):
 def preflight(args):
     if importlib.util.find_spec("zmq") is None:
         raise RuntimeError("pyzmq is missing. Use the benchmark venv from README.md.")
+    if args.terrain == "benchmark_stairs" and not STAIR_SCENE.is_file():
+        raise RuntimeError(f"Stair benchmark scene missing: {STAIR_SCENE}")
     for binary in (args.sim_bin, args.depth_bin, args.deploy_bin):
         if not binary.is_file() or not os.access(binary, os.X_OK):
             raise RuntimeError(f"Executable missing: {binary}. Build inside Ubuntu 22.04 first.")
@@ -296,10 +303,10 @@ def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--speeds", type=float, nargs="+", default=[0.8, 1.0])
     p.add_argument("--repeats", type=int, default=1, help="Paired trials per speed, run sequentially")
-    p.add_argument("--terrain", choices=["flat", "boxes"], default="flat")
+    p.add_argument("--terrain", choices=["flat", "boxes", "benchmark_stairs"], default="flat")
     p.add_argument("--box-task", choices=["ascent", "traverse"], default="ascent",
                    help="Boxes: climb onto box2 (default), or legacy far-edge crossing")
-    p.add_argument("--duration", type=float, help="Simulation seconds; flat=8, boxes=12")
+    p.add_argument("--duration", type=float, help="Simulation seconds; flat=8, boxes=12, benchmark_stairs=16")
     p.add_argument("--warmup", type=float, default=2.0)
     p.add_argument("--min-progress-ratio", type=float, default=0.8)
     p.add_argument("--seed", type=int, default=0, help="Cage mask seed; incremented per pair")
@@ -329,7 +336,11 @@ def main():
     signal.signal(signal.SIGTERM, terminate)
     p = parser()
     args = p.parse_args()
-    args.duration = args.duration if args.duration is not None else (8.0 if args.terrain == "flat" else 12.0)
+    args.duration = args.duration if args.duration is not None else {
+        "flat": 8.0, "boxes": 12.0, "benchmark_stairs": 16.0
+    }[args.terrain]
+    if args.terrain == "benchmark_stairs" and args.box_task != "ascent":
+        p.error("--box-task applies only to the boxes terrain.")
     values = args.speeds + [args.duration, args.warmup, args.lidar_hz, args.startup_timeout]
     if not all(math.isfinite(x) and x > 0 for x in values):
         p.error("Speeds, duration, warmup, LiDAR rate, and timeout must be finite and positive.")
@@ -357,6 +368,8 @@ def main():
                            args.deploy_bin.parent / "config.json", args.deploy_bin,
                            args.sim_bin, args.depth_bin, HERE / "run.py",
                            HERE / "velocity_trial.h", HERE / "box_ascent.h"]}
+    if args.terrain == "benchmark_stairs":
+        manifest["hashes"][str(STAIR_SCENE)] = sha256(STAIR_SCENE)
     manifest["git_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     manifest["git_dirty"] = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip())
     write_json(output / "manifest.json", manifest)

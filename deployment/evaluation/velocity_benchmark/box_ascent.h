@@ -34,13 +34,13 @@ class BoxAscent {
         double achieved_at = -1;
     };
 
-    explicit BoxAscent(const mjModel *m)
+    explicit BoxAscent(const mjModel *m, const char *top_geom_name = "box2")
         : data_(mj_makeData(m), mj_deleteData) {
         if (!data_) throw std::runtime_error("Cannot allocate ascent scoring state");
-        box_ = mj_name2id(m, mjOBJ_GEOM, "box2");
+        box_ = mj_name2id(m, mjOBJ_GEOM, top_geom_name);
         base_ = mj_name2id(m, mjOBJ_BODY, "base_link");
         if (box_ < 0 || base_ < 0 || m->geom_type[box_] != mjGEOM_BOX)
-            throw std::runtime_error("Box ascent requires base_link and box2 box geometry");
+            throw std::runtime_error("Ascent scoring requires base_link and a named top box geometry");
         const char *names[] = {"FL", "FR", "RL", "RR"};
         for (int i = 0; i < 4; ++i) {
             feet_[i] = mj_name2id(m, mjOBJ_GEOM, names[i]);

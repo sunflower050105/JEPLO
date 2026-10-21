@@ -96,7 +96,7 @@ inline po::variables_map helper(int argc, char **argv) {
         "benchmark-dir", po::value<std::string>(&config.benchmark_directory),
         "Output directory; trial starts when its GO file appears")(
         "benchmark-terrain", po::value<std::string>(&config.benchmark_terrain),
-        "Initial terrain for benchmark: flat or boxes")(
+        "Initial terrain for benchmark: flat, boxes, or benchmark_stairs")(
         "benchmark-box-task", po::value<std::string>(&config.benchmark_box_task),
         "Box completion: ascent (default) or legacy traverse")(
         "benchmark-duration", po::value<double>(&config.benchmark_duration),
@@ -136,7 +136,9 @@ inline po::variables_map helper(int argc, char **argv) {
     }
     if (!config.benchmark_directory.empty()) {
         if (!config.enable_lidar ||
-            (config.benchmark_terrain != "flat" && config.benchmark_terrain != "boxes") ||
+            (config.benchmark_terrain != "flat" && config.benchmark_terrain != "boxes" &&
+             config.benchmark_terrain != "benchmark_stairs") ||
+            (config.benchmark_terrain == "benchmark_stairs" && config.benchmark_box_task != "ascent") ||
             (config.benchmark_box_task != "ascent" && config.benchmark_box_task != "traverse") ||
             !std::isfinite(config.benchmark_duration) || config.benchmark_duration <= 0.0 ||
             !std::isfinite(config.benchmark_speed) || config.benchmark_speed <= 0.0 ||
@@ -144,7 +146,7 @@ inline po::variables_map helper(int argc, char **argv) {
             config.benchmark_min_progress_ratio <= 0.0 || config.benchmark_min_progress_ratio > 1.0 ||
             config.see_then_hidden || config.enable_elastic_band || config.interface != "lo" ||
             config.domain_id != 1 || config.use_joystick) {
-            std::cerr << "Velocity benchmark requires --lidar, terrain flat/boxes, "
+            std::cerr << "Velocity benchmark requires --lidar, terrain flat/boxes/benchmark_stairs, "
                          "box task ascent/traverse, "
                          "finite positive duration/speed, progress ratio (0,1], "
                          "loopback DDS domain 1, no joystick/elastic band/see-then-hidden\n";

@@ -75,6 +75,8 @@ class Trial {
                     goal_x_ = d->geom_xpos[3 * box] + m->geom_size[3 * box] + 0.4;
                 else
                     ascent_ = std::make_unique<BoxAscent>(m);
+            } else if (config_.terrain == "benchmark_stairs") {
+                ascent_ = std::make_unique<BoxAscent>(m, "benchmark_stair_landing");
             }
             mj_saveModel(m, path("scene.mjb").c_str(), nullptr, 0);
             csv_.open(path("state.csv"));
@@ -116,17 +118,20 @@ class Trial {
         last_x_ = p[0];
         next_sample_ = elapsed + 0.02;
 
-        // A corridor prevents going around the boxes from counting as completion.
-        const double corridor = config_.terrain == "boxes" ? 0.5 : 1.0;
+        // A corridor prevents going around an obstacle from counting as completion.
+        const double corridor = config_.terrain == "boxes" ? 0.5 :
+                                config_.terrain == "benchmark_stairs" ? 0.8 : 1.0;
         if (p[0] >= goal_x_ && goal_time_ < 0) goal_time_ = elapsed;
         const bool boxes_complete = config_.terrain == "boxes" &&
             (config_.box_task == "ascent" ?
                 ascent.achieved_at >= 0 && ascent.achieved_at <= config_.duration + 1e-9 :
                 goal_time_ >= 0 && elapsed - goal_time_ >= 1.0 && p[0] >= goal_x_);
+        const bool stairs_complete = config_.terrain == "benchmark_stairs" &&
+            ascent.achieved_at >= 0 && ascent.achieved_at <= config_.duration + 1e-9;
         std::string outcome;
         if (fall_duration_ >= 0.2) outcome = "fall";
         else if (std::abs(p[1]) > corridor) outcome = "left_course";
-        else if (boxes_complete) outcome = "success";
+        else if (boxes_complete || stairs_complete) outcome = "success";
         else if (elapsed >= config_.duration) {
             outcome = config_.terrain == "flat" && p[0] >= goal_x_ ? "success" : "timeout";
         }
@@ -153,7 +158,9 @@ class Trial {
             if (ascent_ && outcome == "success") result << ascent.achieved_at;
             else result << "null";
             if (ascent_) {
-                result << ",\n  \"ascent_criteria\": {"
+                result << ",\n  \"ascent_target_geom\": \""
+                       << (config_.terrain == "benchmark_stairs" ? "benchmark_stair_landing" : "box2")
+                       << "\",\n  \"ascent_criteria\": {"
                        << "\"contact_window_s\":" << BoxAscent::kContactWindow
                        << ",\"hold_s\":" << BoxAscent::kHold
                        << ",\"max_sample_gap_s\":" << BoxAscent::kMaxSampleGap
@@ -180,12 +187,16 @@ class Trial {
   private:
     const char *scoringRule() const {
         if (config_.terrain == "flat") return "flat_progress_v1";
+        if (config_.terrain == "benchmark_stairs") return "stair_landing_v1";
         return config_.box_task == "ascent" ? "box_ascent_v2" : "box_traverse_v1";
     }
     std::string path(const char *name) const {
         return (std::filesystem::path(config_.directory) / name).string();
     }
     void initialize(const mjModel *m, const mjData *d) {
+        if (config_.terrain != "flat" && config_.terrain != "boxes" &&
+            config_.terrain != "benchmark_stairs")
+            throw std::runtime_error("Unknown benchmark terrain");
         if (config_.box_task != "ascent" && config_.box_task != "traverse")
             throw std::runtime_error("Unknown benchmark box task");
         base_id_ = mj_name2id(m, mjOBJ_BODY, "base_link");

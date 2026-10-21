@@ -109,6 +109,42 @@ single-box course. `box1` has a 0.3 m top and `box2` a 0.7 m top in this scene.
 Both speeds use the same scene. The default time limits are 8 simulation seconds
 for flat ground and 12 for boxes; override with `--duration`.
 
+## Separate ten-step stair ascent
+
+The stair benchmark selects
+[`scene_benchmark_stairs.xml`](../../unitree_mujoco/unitree_robots/go2/scene_benchmark_stairs.xml)
+explicitly. The ordinary `scene.xml`, flat benchmark, and two-box benchmark
+still use their existing scenes and scoring rules. Rebuild `unitree_mujoco_velocity`
+and the evaluation tests after changing the C++ scorer or terrain switcher.
+
+This course has ten consecutive 0.20 m rises and 0.30 m runs, reaching 2.00 m,
+followed by a 1.20 m long landing. It is a straight-on ascent: it does not
+reproduce the paper's randomized approach headings. The two default commands
+are 0.8 and 1.0 m/s, with a 16 simulation-second limit. To inspect one pair:
+
+```bash
+deployment/evaluation/velocity_benchmark/.venv/bin/python \
+  deployment/evaluation/velocity_benchmark/run.py \
+  --model-dir my_policy_r2 --terrain benchmark_stairs --repeats 1 --video
+```
+
+Success (`stair_landing_v1`) means all four feet fit on the top landing, each
+has made geometric contact with its top within 0.5 s, and the base is within
+the landing footprint, at least 0.16 m above its surface, and tilted no more
+than 30 degrees. Those conditions must hold continuously for 0.2 s before the
+time limit. Fall and leaving the 0.8 m half-width course corridor take priority.
+The runner keeps the forward command active until success or failure. Reaching
+the tenth tread with only the front feet, or passing the landing in the air,
+does not count. This rule is explicit for this experiment; the paper does not
+publish an equivalent exact scoring rule, so these rates are not a direct
+reproduction of its 59.2% stair figure.
+
+After confirming the first videos, use `--repeats 500` for 500 trials **at each
+speed** (1,000 sequential trials total). Inspect `timing_ok` and the real-time
+factor before interpreting speed differences. The runner currently restarts the
+simulator, depth publisher, and controller for every trial; it does not reuse
+processes or run parallel environments.
+
 To collect **100 trials per speed (200 total), without rendering videos**:
 
 ```bash

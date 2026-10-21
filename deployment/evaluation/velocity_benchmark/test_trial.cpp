@@ -27,6 +27,7 @@ int main() {
           <geom name="RR" type="sphere" size=".02"/></body>
       </body>
       <geom name="box2" type="box" pos="2 0 .2" size=".5 .75 .2"/>
+      <geom name="benchmark_stair_landing" type="box" pos="3.6 0 1" size=".6 .8 1"/>
     </worldbody></mujoco>)";
     char error[1024];
     mjModel *model = mj_loadXML(xml.c_str(), nullptr, error, sizeof(error));
@@ -90,6 +91,12 @@ int main() {
     }, "timeout");
     run("ascent_after_deadline", "boxes", 0.51, [](mjData *d, double t) {
         if (t >= 0.32) { d->qpos[0] = 2; d->qpos[2] = 0.699; }
+    }, "timeout");
+    run("stair_landing", "benchmark_stairs", 1.0, [](mjData *d, double t) {
+        if (t >= 0.2) { d->qpos[0] = 3.6; d->qpos[2] = 2.299; }
+    }, "success");
+    run("stair_last_tread_only", "benchmark_stairs", 0.8, [](mjData *d, double t) {
+        if (t >= 0.2) { d->qpos[0] = 2.85; d->qpos[2] = 2.299; }
     }, "timeout");
 
     // Geometric and temporal checks independent of the trial terminal conditions.
