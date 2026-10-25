@@ -4,9 +4,3 @@ build-*/
 build_*/
 cmake-build*/
 _build/
-
-# Generated local editor indexes, dependency backups, and training exports.
-/.vscode/browse.vc.db*
-/deployment/unitree_mujoco/simulate/mujoco.bak-*/
-/training/logs/**/exported/test_cases/
-/training/logs/**/git/

@@ -1,0 +1,5 @@
+--- working directory ---
+/root/autodl-tmp/JEPLO-main/training
+
+--- command ---
+python scripts/train.py --run_name my_policy_r2 --wandb_proj jeplo --num_envs 4096 --max_iterations 20000 --student_env_ratio 0.25 --warmup_iters 5000 10000 --resume True --load_run my_policy --checkpoint model_5000.pt

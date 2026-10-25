@@ -37,17 +37,12 @@ which is included as part of this source code package.
 //   ros2 run lidar_depth_pub lidar_depth_pub --fov 25x120 --port 5560 --downsample-rate 2
 // ─────────────────────────────────────────────────────────────────────────────
 
-#ifndef JEPLO_SIM_ONLY
 #include <livox_ros_driver2/msg/custom_msg.hpp>
 #include <rclcpp/rclcpp.hpp>
-#endif
 
 #include <zmq.h>
 
-#include "../evaluation/see_then_hidden_protocol.h"
-
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <csignal>
@@ -58,7 +53,6 @@ which is included as part of this source code package.
 #include <limits>
 #include <mutex>
 #include <random>
-#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -216,10 +210,10 @@ static const char *bandPatternName(BandPattern pattern) {
 // Build a boolean cage pillar occlusion mask. Two vertical stripes at ±45°
 // azimuth, widest at the bottom rows, narrowing toward the top. Per-pillar
 // jitter and a global scale factor are randomized once.
-static void buildCageMask(bool *mask, std::optional<uint32_t> seed = std::nullopt) {
+static void buildCageMask(bool *mask) {
     std::fill(mask, mask + gGridSize, false);
 
-    std::mt19937 rng(seed ? *seed : std::random_device{}());
+    std::mt19937 rng(std::random_device{}());
     std::uniform_real_distribution<float> jitter_dist(-1.0f, 1.0f);
     std::uniform_real_distribution<float> scale_dist(0.8f, 1.2f);
 
@@ -397,7 +391,6 @@ static void applyWideBottomCornerMask(float *grid) {
 // Project filtered 3D points onto the configured spherical depth grid.
 // Each bin keeps the minimum (closest) distance. Unfilled bins = max_distance.
 // Grid is row-major: grid[theta_bin * gGridCols + phi_bin].
-#ifndef JEPLO_SIM_ONLY
 static void
 projectToSphericalGrid(
     const livox_ros_driver2::msg::CustomMsg::SharedPtr &msg, float *grid, int downsample_rate) {
@@ -437,7 +430,6 @@ projectToSphericalGrid(
         grid[idx] = std::min(grid[idx], r);
     }
 }
-#endif
 
 // Normalize grid: clamp to [0, max_distance], then divide by max_distance → [0, 1].
 // 0.0 = at sensor (0m), 1.0 = at/beyond max range (2.0m).
@@ -460,29 +452,7 @@ static void accumulateMin(const float *hist, int num_frames, float *output) {
     }
 }
 
-// ── Latency stamps ───────────────────────────────────────────────────────────
-// Every published depth message is followed by a 16-byte trailer after the pixel data:
-//   [uint64 newest_scan_ns][uint64 publish_ns]   (system_clock, ns since epoch)
-// newest_scan_ns is when the newest scan in the aggregated window was received here
-// (0 = unknown). Consumers use it to measure depth age; it is ignored by old readers
-// that only look at the first 8 + w*h*4 bytes.
-static constexpr size_t kStampTrailerSize = 2 * sizeof(uint64_t);
-
-static uint64_t wallClockNs() {
-    return static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::system_clock::now().time_since_epoch())
-            .count());
-}
-
-static void writeStampTrailer(uint8_t *dst, uint64_t newest_scan_ns) {
-    const uint64_t publish_ns = wallClockNs();
-    std::memcpy(dst, &newest_scan_ns, sizeof(uint64_t));
-    std::memcpy(dst + sizeof(uint64_t), &publish_ns, sizeof(uint64_t));
-}
-
 // ── ROS2 Node ────────────────────────────────────────────────────────────────
-#ifndef JEPLO_SIM_ONLY
 class LidarDepthPub : public rclcpp::Node {
   public:
     LidarDepthPub(void *zmq_pub, const bool *occlusion_mask, int downsample_rate, int num_stacked)
@@ -495,7 +465,7 @@ class LidarDepthPub : public rclcpp::Node {
         std::copy(occlusion_mask, occlusion_mask + gGridSize, occlusion_mask_);
 
         // Pre-build ZMQ message buffer: [uint32 w][uint32 h][float32 × w × h]
-        zmq_buf_.resize(kHeaderSize + gridDataSize() + kStampTrailerSize);
+        zmq_buf_.resize(kHeaderSize + gridDataSize());
         {
             uint32_t w = gGridCols, h = kGridRows;
             std::memcpy(zmq_buf_.data(), &w, sizeof(uint32_t));
@@ -526,7 +496,6 @@ class LidarDepthPub : public rclcpp::Node {
   private:
     // Called by ROS2 subscription — just buffer the frame
     void lidarCallback(const livox_ros_driver2::msg::CustomMsg::SharedPtr msg) {
-        const uint64_t recv_ns = wallClockNs();
         // ── Step 1: Spherical projection ─────────────────────────────────────
         float frame[kMaxGridSize];
         projectToSphericalGrid(msg, frame, downsample_rate_);
@@ -550,7 +519,6 @@ class LidarDepthPub : public rclcpp::Node {
         std::copy(frame, frame + gGridSize,
                   hist_scans_.data() + static_cast<size_t>(num_stacked_ - 1) * gGridSize);
 
-        newest_scan_ns_ = recv_ns;
         ++frame_count_;
         last_point_num_ = msg->point_num;
     }
@@ -558,15 +526,12 @@ class LidarDepthPub : public rclcpp::Node {
     // Called by wall timer at 10 Hz — aggregate and publish
     void publishTimerCallback() {
         float aggregated[kMaxGridSize];
-        uint64_t scan_ns;
         {
             std::lock_guard<std::mutex> lock(buf_mutex_);
             accumulateMin(hist_scans_.data(), num_stacked_, aggregated);
-            scan_ns = newest_scan_ns_;
         }
 
         std::memcpy(zmq_buf_.data() + kHeaderSize, aggregated, gridDataSize());
-        writeStampTrailer(zmq_buf_.data() + kHeaderSize + gridDataSize(), scan_ns);
         zmq_send(zmq_pub_, zmq_buf_.data(), zmq_buf_.size(), ZMQ_DONTWAIT);
 
         ++publish_count_;
@@ -600,7 +565,6 @@ class LidarDepthPub : public rclcpp::Node {
     // Ring buffer for temporal accumulation (sliding window of latest frames)
     std::mutex buf_mutex_;
     std::vector<float> hist_scans_;
-    uint64_t newest_scan_ns_ = 0; // receive time of newest scan in hist_scans_
 
     // ROS2
     rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr sub_;
@@ -612,7 +576,6 @@ class LidarDepthPub : public rclcpp::Node {
     uint64_t publish_count_ = 0;
     std::chrono::steady_clock::time_point t0_;
 };
-#endif
 
 // ── ZMQ source mode (receives points from unitree_mujoco simulation) ────────
 // Message format from unitree_mujoco:
@@ -676,8 +639,6 @@ static void runZmqSource(
     // ── ZMQ SUB (point cloud input from unitree_mujoco) ─────────────────────
     void *zmq_sub = zmq_socket(zmq_ctx, ZMQ_SUB);
     zmq_setsockopt(zmq_sub, ZMQ_SUBSCRIBE, "", 0);
-    int recv_timeout_ms = 100;
-    zmq_setsockopt(zmq_sub, ZMQ_RCVTIMEO, &recv_timeout_ms, sizeof(recv_timeout_ms));
 
     char sub_endpoint[64];
     snprintf(sub_endpoint, sizeof(sub_endpoint), "tcp://localhost:%d", sub_port);
@@ -694,10 +655,6 @@ static void runZmqSource(
     // ── Ring buffer (same as ROS2 path: sliding window, shift-left) ─────────
     std::mutex buf_mutex;
     std::vector<float> hist_scans(static_cast<size_t>(num_stacked) * gGridSize, 1.0f);
-    std::vector<uint8_t> hist_target_masks(static_cast<size_t>(num_stacked) * gGridSize, 0);
-    std::vector<uint8_t> sim_target_mask(gGridSize, 0);
-    bool sim_target_mask_active = false;
-    std::atomic<bool> protocol_error{false};
 
     static constexpr size_t kHeaderSize = sizeof(uint32_t) * 2;
     // Header in incoming message: 3 floats pos + 9 floats rot = 12 floats
@@ -707,7 +664,6 @@ static void runZmqSource(
     uint64_t frame_count = 0;
     uint64_t publish_count = 0;
     uint32_t last_point_num = 0;
-    uint64_t newest_scan_ns = 0; // receive time of newest scan in hist_scans
     auto t0 = std::chrono::steady_clock::now();
 
     std::cout << "[LidarDepth] Pipeline: ZMQ points → downsample every " << downsample_rate
@@ -720,37 +676,21 @@ static void runZmqSource(
     std::vector<uint8_t> recv_buf(1024 * 1024); // 1 MB max
 
     std::thread recv_thread([&]() {
-        while (g_running && !protocol_error) {
+        while (g_running) {
             int nbytes = zmq_recv(zmq_sub, recv_buf.data(), recv_buf.size(), 0);
             if (nbytes < 0) {
-                if (zmq_errno() == EINTR || zmq_errno() == EAGAIN)
+                if (zmq_errno() == EINTR)
                     continue;
                 break;
             }
 
-            const uint64_t recv_ns = wallClockNs();
             size_t msg_size = static_cast<size_t>(nbytes);
             if (msg_size < kPoseBytes + 3 * sizeof(float))
                 continue;
 
-            // The optional suffix is emitted only by the see-then-hidden
-            // simulator test. Legacy point-cloud messages remain unchanged.
-            size_t point_bytes = 0;
-            const uint8_t *incoming_mask = nullptr;
-            bool incoming_mask_active = false;
-            const auto parse_result = see_then_hidden_wire::parseMaskSuffix(
-                recv_buf.data(), msg_size, kPoseBytes, kGridRows, gGridCols,
-                &point_bytes, &incoming_mask, &incoming_mask_active);
-            if (parse_result == see_then_hidden_wire::ParseResult::kInvalid) {
-                std::cerr << "[LidarDepth] Invalid simulator point-cloud or target-mask "
-                             "dimensions; check matching --fov and --lidar-legacy-fov\n";
-                protocol_error = true;
-                break;
-            }
-
             // Skip pose header (12 floats), use local-frame points directly
             const float *pts = reinterpret_cast<const float *>(recv_buf.data() + kPoseBytes);
-            int num_points = static_cast<int>(point_bytes / (3 * sizeof(float)));
+            int num_points = static_cast<int>((msg_size - kPoseBytes) / (3 * sizeof(float)));
 
             // ── Spherical projection ────────────────────────────────────────
             float frame[kMaxGridSize];
@@ -765,61 +705,24 @@ static void runZmqSource(
             // ── Apply fixed cage/extra occlusion mask ──────────────────────
             applyOcclusionMask(frame, occlusion_mask);
 
-            // Mask each scan before it enters the history. The target changes
-            // pixel position as the robot moves, so masking only the latest
-            // aggregate would leave older target returns at stale pixels.
-            if (incoming_mask_active) {
-                for (int pixel = 0; pixel < gGridSize; ++pixel) {
-                    if (incoming_mask[pixel]) frame[pixel] = 1.0f;
-                }
-            }
-
             // ── Push into ring buffer (shift-left, same as ROS2 path) ───────
             {
                 std::lock_guard<std::mutex> lock(buf_mutex);
-                if (incoming_mask_active && !sim_target_mask_active) {
-                    // Remove the target from earlier clean preview scans at
-                    // each scan's own pixel position. Keep other depth data.
-                    for (size_t pixel = 0; pixel < hist_scans.size(); ++pixel) {
-                        if (hist_target_masks[pixel]) hist_scans[pixel] = 1.0f;
-                    }
-                }
                 if (num_stacked > 1) {
                     std::memmove(hist_scans.data(), hist_scans.data() + gGridSize,
                                  static_cast<size_t>(num_stacked - 1) * gridDataSize());
-                    std::memmove(hist_target_masks.data(), hist_target_masks.data() + gGridSize,
-                                 static_cast<size_t>(num_stacked - 1) * gGridSize);
                 }
                 std::copy(frame, frame + gGridSize,
                           hist_scans.data() + static_cast<size_t>(num_stacked - 1) * gGridSize);
-                uint8_t *stored_mask = hist_target_masks.data() +
-                                       static_cast<size_t>(num_stacked - 1) * gGridSize;
-                if (incoming_mask) {
-                    std::copy_n(incoming_mask, gGridSize, stored_mask);
-                } else {
-                    std::fill_n(stored_mask, gGridSize, 0);
-                }
-                newest_scan_ns = recv_ns;
                 frame_count++;
                 last_point_num = static_cast<uint32_t>(num_points);
-                const bool was_active = sim_target_mask_active;
-                sim_target_mask_active = incoming_mask_active;
-                if (incoming_mask_active) {
-                    std::copy_n(incoming_mask, gGridSize, sim_target_mask.begin());
-                } else {
-                    std::fill(sim_target_mask.begin(), sim_target_mask.end(), 0);
-                }
-                if (sim_target_mask_active != was_active) {
-                    std::cout << "[LidarDepth] See-then-hidden target mask "
-                              << (sim_target_mask_active ? "ON" : "OFF") << '\n';
-                }
             }
         }
     });
 
     // ── Publish timer: aggregate and publish at kPublishRate Hz ─────────────
     //    (mirrors publishTimerCallback in the ROS2 path)
-    std::vector<uint8_t> zmq_buf(kHeaderSize + gridDataSize() + kStampTrailerSize);
+    std::vector<uint8_t> zmq_buf(kHeaderSize + gridDataSize());
     {
         uint32_t w = gGridCols, h = kGridRows;
         std::memcpy(zmq_buf.data(), &w, sizeof(uint32_t));
@@ -829,26 +732,18 @@ static void runZmqSource(
     const auto pub_period = std::chrono::duration<double>(1.0 / kPublishRate);
     auto next_pub = std::chrono::steady_clock::now() + pub_period;
 
-    while (g_running && !protocol_error) {
+    while (g_running) {
         std::this_thread::sleep_until(next_pub);
         next_pub += std::chrono::duration_cast<std::chrono::steady_clock::duration>(pub_period);
 
         // Aggregate ring buffer (same as publishTimerCallback)
         float aggregated[kMaxGridSize];
-        uint64_t scan_ns;
         {
             std::lock_guard<std::mutex> lock(buf_mutex);
             accumulateMin(hist_scans.data(), num_stacked, aggregated);
-            if (sim_target_mask_active) {
-                for (int pixel = 0; pixel < gGridSize; ++pixel) {
-                    if (sim_target_mask[pixel]) aggregated[pixel] = 1.0f;
-                }
-            }
-            scan_ns = newest_scan_ns;
         }
 
         std::memcpy(zmq_buf.data() + kHeaderSize, aggregated, gridDataSize());
-        writeStampTrailer(zmq_buf.data() + kHeaderSize + gridDataSize(), scan_ns);
         zmq_send(zmq_pub, zmq_buf.data(), zmq_buf.size(), ZMQ_DONTWAIT);
         publish_count++;
 
@@ -886,7 +781,6 @@ int main(int argc, char *argv[]) {
     bool use_sim = false;
     int sim_port = 5590;
     bool enable_cage_mask = true;
-    std::optional<uint32_t> cage_seed;
     bool fov_specified = false;
     int downsample_rate = 1;
     int num_stacked = kDefaultNumStacked;
@@ -926,24 +820,7 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
             fov_specified = true;
-        }
-#ifdef JEPLO_VELOCITY_BENCHMARK
-        else if (arg == "--cage-seed") {
-            try {
-                if (i + 1 >= argc) throw std::invalid_argument("missing seed");
-                const std::string value(argv[++i]);
-                size_t used = 0;
-                const auto seed = std::stoull(value, &used);
-                if (value.empty() || value.front() == '-' || used != value.size() || seed > UINT32_MAX)
-                    throw std::invalid_argument("invalid seed");
-                cage_seed = static_cast<uint32_t>(seed);
-            } catch (const std::exception &) {
-                std::cerr << "--cage-seed requires an unsigned 32-bit integer\n";
-                return 1;
-            }
-        }
-#endif
-        else if (arg == "--no-cage-mask") {
+        } else if (arg == "--no-cage-mask") {
             enable_cage_mask = false;
         } else if (arg == "--occlusion-pattern") {
             if (i + 1 >= argc) {
@@ -982,8 +859,7 @@ int main(int argc, char *argv[]) {
     bool cage_mask[kMaxGridSize];
     std::fill(cage_mask, cage_mask + gGridSize, false);
     if (enable_cage_mask) {
-        if (cage_seed) std::cout << "[LidarDepth] Cage seed: " << *cage_seed << std::endl;
-        buildCageMask(cage_mask, cage_seed);
+        buildCageMask(cage_mask);
     } else {
         std::cout << "[LidarDepth] Cage mask disabled" << std::endl;
     }
@@ -996,11 +872,6 @@ int main(int argc, char *argv[]) {
         runZmqSource(sim_port, port, cage_mask, downsample_rate, num_stacked);
         return 0;
     }
-
-#ifdef JEPLO_SIM_ONLY
-    std::cerr << "[LidarDepth] This build supports --sim only\n";
-    return 1;
-#else
 
     // ── Default: ROS2 Livox source ──────────────────────────────────────────
 
@@ -1040,5 +911,4 @@ int main(int argc, char *argv[]) {
     std::cout << "[LidarDepth] Done." << std::endl;
 
     return 0;
-#endif
 }

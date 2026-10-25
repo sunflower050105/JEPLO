@@ -49,7 +49,6 @@ which is included as part of this source code package.
 #include "simulate.h"
 #include "terrain_switcher.h"
 #include "unitree_sdk2_bridge.h"
-#include "../../../evaluation/velocity_benchmark/velocity_trial.h"
 #include <mujoco/mujoco.h>
 
 #define MUJOCO_PLUGIN_DIR "mujoco_plugin"
@@ -300,52 +299,12 @@ mjModel *LoadModel(const char *file, mj::Simulate &sim) {
     return mnew;
 }
 
-// real-time factor monitor: sim time advanced / wall time elapsed, over a window
-// of kRtfWindowSteps physics steps. RTF ~= 1.0 means the sim keeps pace with the
-// wall clock, so the policy's control rate matches what it would see on hardware.
-constexpr int kRtfWindowSteps = 1000;
-struct RtfMonitor {
-    std::chrono::steady_clock::time_point wall0;
-    mjtNum sim0 = 0;
-    long steps = 0;
-    bool anchored = false;
-
-    void Reset() { anchored = false; }
-
-    // call after every mj_step
-    void OnStep(const mjData *d) {
-        const auto now = std::chrono::steady_clock::now();
-        // (re)anchor on first step, after pause, or when sim time jumps back (reset/reload)
-        if (!anchored || d->time < sim0) {
-            wall0 = now;
-            sim0 = d->time;
-            steps = 0;
-            anchored = true;
-            return;
-        }
-        if (++steps % kRtfWindowSteps == 0) {
-            const double wall = std::chrono::duration<double>(now - wall0).count();
-            const double simdt = d->time - sim0;
-            if (wall > 0) {
-                std::printf("RTF = %.3f  (sim %.3fs / wall %.3fs over %d steps)%s\n",
-                            simdt / wall, simdt, wall, kRtfWindowSteps,
-                            (simdt / wall < 0.95 || simdt / wall > 1.05) ? "  <-- OUT OF RANGE" : "");
-                std::fflush(stdout);
-            }
-            wall0 = now;
-            sim0 = d->time;
-        }
-    }
-};
-
 // simulate in background thread (while rendering in main thread)
 void PhysicsLoop(
-    mj::Simulate &sim, Mid360LidarPublisher *lidar, TerrainSwitcher *terrain_switcher,
-    velocity_benchmark::Trial *velocity_trial) {
+    mj::Simulate &sim, Mid360LidarPublisher *lidar, TerrainSwitcher *terrain_switcher) {
     // cpu-sim syncronization point
     std::chrono::time_point<mj::Simulate::Clock> syncCPU;
     mjtNum syncSim = 0;
-    RtfMonitor rtf;
 
     // ChannelFactory::Instance()->Init(0);
     // UnitreeDds ud(d);
@@ -470,7 +429,6 @@ void PhysicsLoop(
 
                         // run single step, let next iteration deal with timing
                         mj_step(m, d);
-                        rtf.OnStep(d);
                         stepped = true;
                     }
 
@@ -511,7 +469,6 @@ void PhysicsLoop(
 
                             // call mj_step
                             mj_step(m, d);
-                            rtf.OnStep(d);
                             stepped = true;
 
                             // break if reset
@@ -525,16 +482,6 @@ void PhysicsLoop(
                     if (stepped) {
                         if (lidar)
                             lidar->update(m, d);
-                        if (velocity_trial) {
-                            try {
-                                if (velocity_trial->update(m, d))
-                                    sim.exitrequest.store(true);
-                            } catch (const std::exception &error) {
-                                std::cerr << "[VelocityTrial] Invalid trial: " << error.what()
-                                          << std::endl;
-                                sim.exitrequest.store(true);
-                            }
-                        }
                         sim.AddToHistory();
                     }
                 }
@@ -544,7 +491,6 @@ void PhysicsLoop(
                     // run mj_forward, to update rendering and joint sliders
                     mj_forward(m, d);
                     sim.speed_changed = true;
-                    rtf.Reset();
                 }
             }
         } // release std::lock_guard<std::mutex>
@@ -556,8 +502,7 @@ void PhysicsLoop(
 
 void PhysicsThread(
     mj::Simulate *sim, const char *filename, std::shared_ptr<Mid360LidarPublisher> lidar,
-    std::shared_ptr<TerrainSwitcher> terrain_switcher,
-    std::shared_ptr<velocity_benchmark::Trial> velocity_trial) {
+    std::shared_ptr<TerrainSwitcher> terrain_switcher) {
     // request loadmodel if file given (otherwise drag-and-drop)
     if (filename != nullptr) {
         sim->LoadMessage(filename);
@@ -577,7 +522,7 @@ void PhysicsThread(
         }
     }
 
-    PhysicsLoop(*sim, lidar.get(), terrain_switcher.get(), velocity_trial.get());
+    PhysicsLoop(*sim, lidar.get(), terrain_switcher.get());
 
     // delete everything we allocated
     free(ctrlnoise);
@@ -704,13 +649,6 @@ int main(int argc, char **argv) {
         lidar = std::make_shared<Mid360LidarPublisher>(
             param::config.lidar_port, param::config.lidar_hz,
             param::config.lidar_legacy_fov);
-        if (param::config.see_then_hidden) {
-            lidar->enableSeeThenHidden(
-                param::config.see_then_hidden_distance,
-                param::config.see_then_hidden_preview_scans,
-                param::config.see_then_hidden_target,
-                param::config.see_then_hidden_log);
-        }
         if (!lidar->loadPattern(param::config.lidar_pattern)) {
             std::cerr << "[Mid360] " << lidar->error() << std::endl;
             return 1;
@@ -721,17 +659,7 @@ int main(int argc, char **argv) {
     auto sim = std::make_unique<mj::Simulate>(
         std::make_unique<mj::GlfwAdapter>(), &cam, &opt, &pert, /* is_passive = */ false);
     auto terrain = std::make_shared<TerrainSwitcher>();
-    if (!param::config.benchmark_directory.empty())
-        terrain->setInitialTerrain(param::config.benchmark_terrain);
     terrain_switcher = terrain.get();
-    std::shared_ptr<velocity_benchmark::Trial> velocity_trial;
-    if (!param::config.benchmark_directory.empty())
-        velocity_trial = std::make_shared<velocity_benchmark::Trial>(
-            velocity_benchmark::Config{param::config.benchmark_directory,
-                param::config.benchmark_terrain, param::config.benchmark_duration,
-                param::config.benchmark_speed, param::config.benchmark_min_progress_ratio,
-                param::config.benchmark_box_task,
-                param::config.benchmark_stair_contact_friction});
 
     std::thread unitree_thread(UnitreeSdk2BridgeThread, nullptr);
 
@@ -751,8 +679,7 @@ int main(int argc, char **argv) {
 
     // start physics thread
     std::thread physicsthreadhandle(
-        &PhysicsThread, sim.get(), param::config.robot_scene.c_str(), lidar, terrain,
-        velocity_trial);
+        &PhysicsThread, sim.get(), param::config.robot_scene.c_str(), lidar, terrain);
     // start simulation UI loop (blocking call)
     GLFWwindow *window = static_cast<mj::GlfwAdapter *>(sim->platform_ui.get())->window_;
     mujoco_key_cb = glfwSetKeyCallback(window, user_key_cb);

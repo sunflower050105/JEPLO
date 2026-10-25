@@ -44,8 +44,4 @@ link_libraries(
 
 add_executable(unitree_mujoco ${SIM_SRC} src/main.cc)
 
-# Opt-in evaluation executable. Normal builds and the default binary are unchanged.
-add_executable(unitree_mujoco_velocity EXCLUDE_FROM_ALL ${SIM_SRC} src/main.cc)
-target_compile_definitions(unitree_mujoco_velocity PRIVATE JEPLO_VELOCITY_BENCHMARK)
-
 add_executable(jstest src/joystick/jstest.cc src/joystick/joystick.cc)
