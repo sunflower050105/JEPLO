@@ -15,6 +15,10 @@ Use `--repeats 1` for the first smoke test. `--output_dir` selects a new,
 nonexistent output directory. `--checkpoint` selects another `.pt` file.
 The command starts Isaac Sim headless and does not request camera rendering.
 The existing lidar raycaster still requires an Isaac-compatible GPU and driver.
+The CTS runner prints a teacher/student environment split during initialization.
+With one environment it reserves that slot for teacher training bookkeeping,
+but this benchmark calls the separate student inference policy for every trial.
+`benchmark_stairs` in that printout is the name of the stair terrain course.
 
 Each trial starts the robot 3.0 m before a straight ten-step course. Every
 rise is 0.20 m and every run is 0.30 m. The top landing is 1.20 m long and

@@ -272,10 +272,10 @@ def main():
         env = RslRlVecEnvWrapper(BenchmarkEnv(cfg=cfg), clip_actions=agent_cfg.clip_actions)
         origin = env.unwrapped._terrain.env_origins[0].detach().cpu().tolist()
         train_cfg = agent_cfg.to_dict()
-        train_cfg["algorithm"]["student_env_ratio"] = 1.0
         runner = OnPolicyRunnerTeacherCTS(env, train_cfg, log_dir=None, device=agent_cfg.device)
         runner.load(str(checkpoint), load_optimizer=False)
         policy = runner.get_inference_policy(device=env.unwrapped.device)
+        print("[POLICY] student inference for every trial; CTS environment split above is training bookkeeping", flush=True)
         rows = []
         with (output_dir / "trials.csv").open("w", newline="") as stream:
             writer = csv.DictWriter(stream, fieldnames=[
