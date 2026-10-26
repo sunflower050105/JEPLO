@@ -11,6 +11,7 @@ import hashlib
 import json
 import math
 import random
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -190,13 +191,17 @@ def state(env):
 
 
 def run_trial(env, policy, speed, trial_index, origin):
+    print(f"[TRIAL_START] speed={speed:g} trial={trial_index + 1}/{args.repeats}", flush=True)
     trial_seed = args.seed + trial_index
     random.seed(trial_seed)
     np.random.seed(trial_seed)
     torch.manual_seed(trial_seed)
     BenchmarkEnv.fixed_speed = speed
     obs, extras = env.reset()
-    policy.reset(torch.ones(1, dtype=torch.bool, device=env.unwrapped.device))
+    # The runner's inference policy creates recurrent state under
+    # @torch.inference_mode(). Clear it in that same mode between trials.
+    with torch.inference_mode():
+        policy.reset(torch.ones(1, dtype=torch.bool, device=env.unwrapped.device))
     policy.step_counter = 0
     start_x = float(origin[0])
     start_y = float(origin[1])
@@ -207,8 +212,9 @@ def run_trial(env, policy, speed, trial_index, origin):
     max_progress = 0.0
     elapsed = 0.0
     for step in range(1, max_steps + 1):
-        with torch.inference_mode():
-            actions = policy(obs, extras)
+        with torch.no_grad():
+            # Keep inference tensors out of Isaac Lab's mutable simulation state.
+            actions = policy(obs, extras).clone()
             obs, _, _, extras = env.step(actions)
         elapsed = step * env.unwrapped.step_dt
         base, feet, contacts, tilt = state(env)
@@ -300,7 +306,12 @@ def main():
             print(f"[METRIC] speed={speed:g} success={successes}/{len(subset)} rate={item['success_rate']:.3f}", flush=True)
         (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
         print(f"[DONE] output={output_dir}", flush=True)
-    finally:
+    except BaseException:
+        # Isaac Kit shutdown can mask Python exceptions and return exit code 0.
+        # Let the failed process exit with its original exception instead.
+        traceback.print_exc()
+        raise
+    else:
         if env is not None:
             env.close()
         app.close()

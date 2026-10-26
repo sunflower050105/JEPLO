@@ -7,13 +7,16 @@ each of 0.5 and 0.7 m/s:
 
 ```bash
 cd /root/autodl-tmp/JEPLO-main/training
-PYTHONUNBUFFERED=1 /root/autodl-tmp/env_jeplo/bin/python -u scripts/benchmark_stairs.py \
+VK_ICD_FILENAMES=/etc/vulkan/icd.d/nvidia_icd.json PYTHONUNBUFFERED=1 \
+  /root/autodl-tmp/env_jeplo/bin/python -u scripts/benchmark_stairs.py \
   --headless --device cuda:0
 ```
 
 Use `--repeats 1` for the first smoke test. `--output_dir` selects a new,
 nonexistent output directory. `--checkpoint` selects another `.pt` file.
 The command starts Isaac Sim headless and does not request camera rendering.
+The `VK_ICD_FILENAMES` setting selects the working NVIDIA Vulkan driver on
+the current AutoDL image; adjust it if a cloned instance has a different ICD.
 The existing lidar raycaster still requires an Isaac-compatible GPU and driver.
 The CTS runner prints a teacher/student environment split during initialization.
 With one environment it reserves that slot for teacher training bookkeeping,
