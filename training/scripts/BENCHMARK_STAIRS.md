@@ -39,7 +39,9 @@ posture, and hold thresholds match; the contact test is an approximation.
 
 The output directory contains `metadata.json` (including checkpoint hash),
 `trials.csv` (flushed after every trial), and `summary.json` (per-speed success
-counts and rates). A stopped run retains the completed trial rows. Results
+counts and rates). `metadata.json` is written at startup; `trials.csv` appears
+only after the environment and policy have initialized. A stopped run retains
+the completed trial rows. Results
 from this in-process Isaac student and the MuJoCo deployment student can help
 localize a gap, but they also differ in contact solver and depth/deployment
 path, so a rate difference alone does not prove one unique cause.

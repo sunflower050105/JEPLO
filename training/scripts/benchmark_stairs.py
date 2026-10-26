@@ -61,6 +61,15 @@ class BenchmarkEnv(Go2LocoEnv):
         self._direct_command_terrain_mask[:] = True
         self._waypoint_command_terrain_mask[:] = False
 
+    def _reset_goals(self, masks=None):
+        # The training task squeezes its mask to a scalar for a single env.
+        # Keep the benchmark's one-element mask one-dimensional instead.
+        if masks is None:
+            masks = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
+        masks = masks.reshape(-1)
+        self._env_next_goals_idx[masks] = 0
+        self._cmd_goal_w[masks, :] = self._env_goals[masks, 0, :]
+
     def _reset_speed(self, masks=None):
         if masks is None:
             masks = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
