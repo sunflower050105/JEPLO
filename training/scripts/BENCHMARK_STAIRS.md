@@ -52,3 +52,39 @@ the completed trial rows. Results
 from this in-process Isaac student and the MuJoCo deployment student can help
 localize a gap, but they also differ in contact solver and depth/deployment
 path, so a rate difference alone does not prove one unique cause.
+
+## Depth occlusion conditions
+
+Run the same stair task with a clean depth control and four paper-style masks:
+
+```bash
+cd /root/autodl-tmp/JEPLO-main/training
+VK_ICD_FILENAMES=/etc/vulkan/icd.d/nvidia_icd.json PYTHONUNBUFFERED=1 \
+  /root/autodl-tmp/env_jeplo/bin/python -u scripts/benchmark_stairs.py \
+  --headless --device cuda:0 \
+  --occlusion_patterns standard blob cross cut stripe
+```
+
+This runs 100 trials **per speed and per pattern** by default: 1,000 trials
+for five conditions and two speeds. Use `--repeats 1 --duration 1` for a quick
+setup check, or omit `standard` to run only the four requested masks. Results
+go to `outputs/stair_occlusion_benchmark/<timestamp>/` with a pattern column
+in `trials.csv` and one summary row per pattern and speed.
+
+The mask is sampled independently from a recorded `mask_seed` at trial start
+and held fixed throughout that trial. `masked_fraction` records its actual
+coverage. Blob is three overlapping rounded patches, Cross is an X, Cut is
+a large diagonal right-hand loss, and Stripe is two vertical bands. Pixels
+under a mask become normalized depth 1.0 (no return) in **every frame of the
+policy's depth stack**. The stair physics, command, student policy, LiDAR
+projection, Gaussian noise, bottom-row dropout, temporal scan accumulation,
+and success rule are the same as above. For this occlusion study, the training
+task's additional random-shape and Perlin masks are disabled for all five
+conditions so the selected pattern is the only occlusion difference.
+
+The four masks approximate Fig. 5(a-d) of the [JEPLO paper](https://arxiv.org/html/2609.15770);
+its exact mask generator parameters are not published. Thus these results
+measure robustness to the pictured pattern families, not exact replication
+of the paper's occlusion test. The earlier default stair benchmark retains
+its original depth augmentation and output format when
+`--occlusion_patterns` is absent.

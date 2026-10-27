@@ -14,6 +14,9 @@ import random
 import traceback
 from datetime import datetime
 from pathlib import Path
+from types import MethodType
+
+from stair_occlusion_masks import PATTERNS, make_mask
 
 from isaaclab.app import AppLauncher
 
@@ -25,10 +28,16 @@ parser.add_argument("--duration", type=float, default=16.0, help="Maximum simula
 parser.add_argument("--no_yaw_hold", action="store_true", help="Disable IMU-style stair heading correction")
 parser.add_argument("--seed", type=int, default=17)
 parser.add_argument("--output_dir", type=Path, default=None)
+parser.add_argument(
+    "--occlusion_patterns", nargs="+", choices=PATTERNS, default=None,
+    help="Run clean standard and/or fixed-per-trial paper-style depth occlusion conditions",
+)
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 if args.repeats < 1 or args.duration <= 0 or not args.speeds or any(speed <= 0 for speed in args.speeds):
     parser.error("repeats, duration, and every speed must be positive")
+if args.occlusion_patterns and len(set(args.occlusion_patterns)) != len(args.occlusion_patterns):
+    parser.error("Each occlusion pattern may be listed only once")
 args.headless = True
 args.enable_cameras = False
 app = AppLauncher(args).app
@@ -53,6 +62,35 @@ class BenchmarkEnv(Go2LocoEnv):
 
     fixed_speed = 0.5
     yaw_hold_enabled = True
+    occlusion_enabled = False
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._benchmark_mask = None
+        if self.occlusion_enabled:
+            # Bypass training's random shape and Perlin masks for this test.
+            # Keep its LiDAR projection, noise, dropout, and temporal stacking.
+            self._spherical_depth_gen.get_depth_image = MethodType(
+                self._clean_depth_image, self._spherical_depth_gen
+            )
+
+    @staticmethod
+    def _clean_depth_image(generator):
+        return generator._aggregated
+
+    def set_occlusion_condition(self, pattern: str, seed: int) -> float:
+        height = self.cfg.mid360.pattern_cfg.vertical_num_rays
+        width = self.cfg.mid360.pattern_cfg.horizontal_num_rays
+        mask = make_mask(pattern, height, width, seed)
+        self._benchmark_mask = torch.as_tensor(mask, device=self.device)
+        return float(mask.mean())
+
+    def _get_observations(self, pure: bool = False):
+        observations = super()._get_observations(pure=pure)
+        if self.occlusion_enabled and self._benchmark_mask is not None:
+            depth = observations["depth"]
+            observations["depth"] = depth.masked_fill(self._benchmark_mask[None, None], 1.0)
+        return observations
 
     def _setup_rewards(self):
         super()._setup_rewards()
@@ -190,13 +228,16 @@ def state(env):
     return base, feet, contacts, tilt
 
 
-def run_trial(env, policy, speed, trial_index, origin):
-    print(f"[TRIAL_START] speed={speed:g} trial={trial_index + 1}/{args.repeats}", flush=True)
+def run_trial(env, policy, speed, trial_index, origin, pattern=None):
+    label = f" pattern={pattern}" if pattern else ""
+    print(f"[TRIAL_START]{label} speed={speed:g} trial={trial_index + 1}/{args.repeats}", flush=True)
     trial_seed = args.seed + trial_index
     random.seed(trial_seed)
     np.random.seed(trial_seed)
     torch.manual_seed(trial_seed)
     BenchmarkEnv.fixed_speed = speed
+    mask_seed = trial_seed + 1_000_003
+    masked_fraction = env.unwrapped.set_occlusion_condition(pattern, mask_seed) if pattern else None
     obs, extras = env.reset()
     # The runner's inference policy creates recurrent state under
     # @torch.inference_mode(). Clear it in that same mode between trials.
@@ -226,7 +267,7 @@ def run_trial(env, policy, speed, trial_index, origin):
             outcome = outcome_now
             ascent_time = scorer.achieved_at
             break
-    return {
+    result = {
         "speed_mps": speed,
         "trial": trial_index,
         "seed": trial_seed,
@@ -238,13 +279,17 @@ def run_trial(env, policy, speed, trial_index, origin):
         "max_progress_m": round(max_progress, 4),
         "scoring_rule": LandingScorer.rule,
     }
+    if pattern is not None:
+        result.update(occlusion_pattern=pattern, mask_seed=mask_seed, masked_fraction=round(masked_fraction, 4))
+    return result
 
 
 def main():
     checkpoint = args.checkpoint.resolve()
     if not checkpoint.is_file():
         raise FileNotFoundError(f"Checkpoint missing: {checkpoint}")
-    output_dir = args.output_dir or Path("outputs/stair_benchmark") / datetime.now().strftime("%Y%m%d-%H%M%S")
+    output_root = "stair_occlusion_benchmark" if args.occlusion_patterns else "stair_benchmark"
+    output_dir = args.output_dir or Path("outputs") / output_root / datetime.now().strftime("%Y%m%d-%H%M%S")
     output_dir.mkdir(parents=True, exist_ok=False)
     metadata = {
         "checkpoint": str(checkpoint),
@@ -266,12 +311,22 @@ def main():
         "contact_note": "Isaac foot force plus landing footprint/height proxy; engine contacts are not identical to MuJoCo geom contacts.",
         "headless": True,
     }
+    if args.occlusion_patterns:
+        metadata.update({
+            "occlusion_patterns": args.occlusion_patterns,
+            "mask_scope": "fixed within trial; mask_seed paired by trial index across speeds and conditions",
+            "mask_fill_value": 1.0,
+            "mask_generator_sha256": sha256(Path(__file__).with_name("stair_occlusion_masks.py")),
+            "baseline_depth": "training random shape and Perlin occlusion disabled; LiDAR noise, dropout and temporal stacking retained",
+            "mask_reference": "JEPLO Fig. 5(a-d) visual approximations; exact paper mask parameters are unpublished",
+        })
     (output_dir / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
     print(f"[START] output={output_dir} checkpoint={checkpoint} branch=student", flush=True)
     env = None
     try:
         cfg = configure_env()
         BenchmarkEnv.yaw_hold_enabled = not args.no_yaw_hold
+        BenchmarkEnv.occlusion_enabled = bool(args.occlusion_patterns)
         agent_cfg = cli_args.parse_rsl_rl_cfg("Unitree-Go2-Locomotion", argparse.Namespace(
             resume=False, load_run=None, checkpoint=None, run_name=None, logger=None, log_project_name=None
         ))
@@ -282,28 +337,40 @@ def main():
         runner.load(str(checkpoint), load_optimizer=False)
         policy = runner.get_inference_policy(device=env.unwrapped.device)
         print("[POLICY] student inference for every trial; CTS environment split above is training bookkeeping", flush=True)
+        if args.occlusion_patterns:
+            print(f"[OCCLUSION] conditions={','.join(args.occlusion_patterns)}; clean depth before selected mask", flush=True)
         rows = []
         with (output_dir / "trials.csv").open("w", newline="") as stream:
-            writer = csv.DictWriter(stream, fieldnames=[
+            fields = [
                 "speed_mps", "trial", "seed", "valid", "success", "outcome", "duration_s",
                 "ascent_time_s", "max_progress_m", "scoring_rule",
-            ])
+            ]
+            if args.occlusion_patterns:
+                fields += ["occlusion_pattern", "mask_seed", "masked_fraction"]
+            writer = csv.DictWriter(stream, fieldnames=fields)
             writer.writeheader()
-            for speed in args.speeds:
-                for trial in range(args.repeats):
-                    result = run_trial(env, policy, speed, trial, origin)
-                    writer.writerow(result)
-                    stream.flush()
-                    rows.append(result)
-                    print(f"[PROGRESS] speed={speed:g} trial={trial + 1}/{args.repeats} outcome={result['outcome']}", flush=True)
+            for pattern in (args.occlusion_patterns or [None]):
+                for speed in args.speeds:
+                    for trial in range(args.repeats):
+                        result = run_trial(env, policy, speed, trial, origin, pattern)
+                        writer.writerow(result)
+                        stream.flush()
+                        rows.append(result)
+                        label = f" pattern={pattern}" if pattern else ""
+                        print(f"[PROGRESS]{label} speed={speed:g} trial={trial + 1}/{args.repeats} outcome={result['outcome']}", flush=True)
         summary = []
-        for speed in args.speeds:
-            subset = [row for row in rows if row["speed_mps"] == speed and row["valid"]]
-            successes = sum(row["success"] for row in subset)
-            item = {"speed_mps": speed, "valid_trials": len(subset), "successes": successes,
-                    "success_rate": successes / len(subset) if subset else None}
-            summary.append(item)
-            print(f"[METRIC] speed={speed:g} success={successes}/{len(subset)} rate={item['success_rate']:.3f}", flush=True)
+        for pattern in (args.occlusion_patterns or [None]):
+            for speed in args.speeds:
+                subset = [row for row in rows if row["speed_mps"] == speed and row["valid"]
+                          and (pattern is None or row["occlusion_pattern"] == pattern)]
+                successes = sum(row["success"] for row in subset)
+                item = {"speed_mps": speed, "valid_trials": len(subset), "successes": successes,
+                        "success_rate": successes / len(subset) if subset else None}
+                if pattern is not None:
+                    item["occlusion_pattern"] = pattern
+                summary.append(item)
+                label = f" pattern={pattern}" if pattern else ""
+                print(f"[METRIC]{label} speed={speed:g} success={successes}/{len(subset)} rate={item['success_rate']:.3f}", flush=True)
         (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
         print(f"[DONE] output={output_dir}", flush=True)
     except BaseException:
