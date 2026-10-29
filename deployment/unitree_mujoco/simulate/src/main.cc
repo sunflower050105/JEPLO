@@ -720,6 +720,15 @@ int main(int argc, char **argv) {
     // simulate object encapsulates the UI
     auto sim = std::make_unique<mj::Simulate>(
         std::make_unique<mj::GlfwAdapter>(), &cam, &opt, &pert, /* is_passive = */ false);
+    GLFWwindow *window = static_cast<mj::GlfwAdapter *>(sim->platform_ui.get())->window_;
+    if (param::config.benchmark_hide_window) {
+        glfwHideWindow(window);
+        if (glfwGetWindowAttrib(window, GLFW_VISIBLE) != GLFW_FALSE) {
+            std::cerr << "Failed to hide the benchmark MuJoCo window\n";
+            return 1;
+        }
+        std::cout << "[Benchmark] MuJoCo window hidden\n";
+    }
     auto terrain = std::make_shared<TerrainSwitcher>();
     if (!param::config.benchmark_directory.empty())
         terrain->setInitialTerrain(param::config.benchmark_terrain);
@@ -731,7 +740,8 @@ int main(int argc, char **argv) {
                 param::config.benchmark_terrain, param::config.benchmark_duration,
                 param::config.benchmark_speed, param::config.benchmark_min_progress_ratio,
                 param::config.benchmark_box_task,
-                param::config.benchmark_stair_contact_friction});
+                param::config.benchmark_stair_contact_friction,
+                param::config.benchmark_replay_model});
 
     std::thread unitree_thread(UnitreeSdk2BridgeThread, nullptr);
 
@@ -754,7 +764,6 @@ int main(int argc, char **argv) {
         &PhysicsThread, sim.get(), param::config.robot_scene.c_str(), lidar, terrain,
         velocity_trial);
     // start simulation UI loop (blocking call)
-    GLFWwindow *window = static_cast<mj::GlfwAdapter *>(sim->platform_ui.get())->window_;
     mujoco_key_cb = glfwSetKeyCallback(window, user_key_cb);
     sim->RenderLoop();
     physicsthreadhandle.join();

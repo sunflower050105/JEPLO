@@ -5,6 +5,7 @@ import argparse
 import csv
 import hashlib
 import importlib.util
+import itertools
 import json
 import math
 import os
@@ -19,6 +20,7 @@ import time
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 STAIR_SCENE = ROOT / "deployment/unitree_mujoco/unitree_robots/go2/scene_benchmark_stairs.xml"
+OCCLUSIONS = ("standard", "blob", "cross", "cut", "stripe")
 
 
 def write_json(path, value):
@@ -52,6 +54,23 @@ def decode_depth(message):
     return width, height, scan_receive_ns, publish_ns
 
 
+def write_depth_preview(path, message, width, height):
+    """Save a small view of the normalized depth grid actually sent to the policy."""
+    values = struct.unpack_from(f"={width * height}f", message, 8)
+    pixels = bytes(min(255, max(0, int(value * 255 + 0.5)))
+                   if math.isfinite(value) else 255 for value in values)
+    path.write_bytes(f"P5\n{width} {height}\n255\n".encode() + pixels)
+
+
+def prune_successful_trial(directory, keep_diagnostics=False):
+    """Retain scoring and depth evidence; leave invalid trials intact for diagnosis."""
+    if keep_diagnostics:
+        return
+    for name in ("commands.json", "start.json", "status.json", "GO",
+                 "sent_commands.csv", "simulator.log", "depth.log", "deploy.log"):
+        (directory / name).unlink(missing_ok=True)
+
+
 def check_tcp_port_available(port):
     """Reject live listeners without treating a prior trial's TIME_WAIT as occupied."""
     with socket.socket() as sock:
@@ -60,23 +79,29 @@ def check_tcp_port_available(port):
         sock.listen(1)
 
 
-def commands(args, trial, speed, seed):
+def commands(args, trial, speed, seed, occlusion=None):
     sim = [str(args.sim_bin), "--lidar", "--lidar-hz", str(args.lidar_hz),
            "--network", "lo", "--domain_id", "1", "--benchmark-dir", str(trial),
            "--benchmark-terrain", args.terrain, "--benchmark-speed", str(speed),
            "--benchmark-box-task", args.box_task,
            "--benchmark-duration", str(args.duration), "--benchmark-min-progress-ratio",
            str(args.min_progress_ratio)]
+    if args.video:
+        sim.extend(["--benchmark-replay-model", str(trial.parent / "render_model.mjb")])
     if args.terrain == "benchmark_stairs":
         sim.extend(["--scene", str(STAIR_SCENE), "--benchmark-stair-contact-friction",
                     str(args.stair_contact_friction)])
+    if args.hide_simulator_window:
+        sim.append("--benchmark-hide-window")
     if args.legacy_lidar_fov:
         sim.append("--lidar-legacy-fov")
     depth = [str(args.depth_bin), "--sim", "--fov", args.fov,
              "--downsample-rate", str(args.downsample_rate),
              "--stacked-frames", str(args.stacked_frames), "--cage-seed", str(seed)]
-    if args.no_cage_mask:
+    if args.no_cage_mask or occlusion is not None:
         depth.append("--no-cage-mask")
+    if occlusion is not None:
+        depth.extend(["--benchmark-mask-file", str(trial / "occlusion_mask.pgm")])
     policy = [str(args.deploy_bin), "--net", "lo", "--model-dir", args.model_dir,
               "--ood-count-threshold", "15", "--raw-actions", "--trt-cache"]
     if args.terrain == "benchmark_stairs" and not args.no_stair_yaw_hold:
@@ -111,33 +136,45 @@ def controller_safety_fault(log_chunk, trial_armed):
 
 def summarize(results):
     summary = []
-    groups = {(r["command_mps"], r.get("scoring_rule", "unspecified")) for r in results}
-    for speed, rule in sorted(groups):
+    with_occlusion = any("occlusion" in r for r in results)
+    groups = {(r.get("occlusion") if with_occlusion else None,
+               r["command_mps"], r.get("scoring_rule", "unspecified")) for r in results}
+    for occlusion, speed, rule in sorted(groups):
         attempted = [r for r in results if r["command_mps"] == speed and
-                     r.get("scoring_rule", "unspecified") == rule]
+                     r.get("scoring_rule", "unspecified") == rule and
+                     (not with_occlusion or r.get("occlusion") == occlusion)]
         valid = [r for r in attempted if r["valid"]]
         successes = sum(r["success"] for r in valid)
-        summary.append({"command_mps": speed, "scoring_rule": rule, "attempted": len(attempted),
-                        "valid_trials": len(valid), "invalid_trials": len(attempted) - len(valid),
-                        "successes": successes,
-                        "success_rate": successes / len(valid) if valid else None})
+        row = {"command_mps": speed, "scoring_rule": rule, "attempted": len(attempted),
+               "valid_trials": len(valid), "invalid_trials": len(attempted) - len(valid),
+               "successes": successes,
+               "success_rate": successes / len(valid) if valid else None}
+        if with_occlusion:
+            row["occlusion"] = occlusion
+        summary.append(row)
     return summary
 
 
 def export_results(output, results):
     write_json(output / "results.json", results)
     write_json(output / "summary.json", summarize(results))
+    with_occlusion = any("occlusion" in r for r in results)
     fields = ["pair_id", "command_mps", "terrain", "box_task", "scoring_rule",
               "valid", "success", "outcome", "duration_s", "ascent_time_s",
               "progress_m", "mean_speed_mps", "speed_rmse_mps", "max_tilt_deg",
               "real_time_factor", "timing_ok", "controller_safety_fault", "directory", "error"]
+    if with_occlusion:
+        fields = ["occlusion", "mask_seed", "masked_fraction", *fields]
     with (output / "results.csv").open("w", newline="") as stream:
         writer = csv.DictWriter(stream, fields, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(results)
+    summary_fields = ["command_mps", "scoring_rule", "attempted", "valid_trials",
+                      "invalid_trials", "successes", "success_rate"]
+    if with_occlusion:
+        summary_fields.insert(0, "occlusion")
     with (output / "summary.csv").open("w", newline="") as stream:
-        writer = csv.DictWriter(stream, ["command_mps", "scoring_rule", "attempted", "valid_trials",
-                                        "invalid_trials", "successes", "success_rate"])
+        writer = csv.DictWriter(stream, summary_fields)
         writer.writeheader()
         writer.writerows(summarize(results))
 
@@ -145,6 +182,9 @@ def export_results(output, results):
 def preflight(args):
     if importlib.util.find_spec("zmq") is None:
         raise RuntimeError("pyzmq is missing. Use the benchmark venv from README.md.")
+    if args.occlusions is not None:
+        if importlib.util.find_spec("numpy") is None:
+            raise RuntimeError("NumPy is required for the Isaac-matched occlusion masks.")
     if args.terrain == "benchmark_stairs" and not STAIR_SCENE.is_file():
         raise RuntimeError(f"Stair benchmark scene missing: {STAIR_SCENE}")
     for binary in (args.sim_bin, args.depth_bin, args.deploy_bin):
@@ -154,6 +194,11 @@ def preflight(args):
         missing = [line.strip() for line in linked.stdout.splitlines() if "not found" in line]
         if missing:
             raise RuntimeError(f"{binary.name}: missing libraries: {missing}. Set LD_LIBRARY_PATH as documented.")
+    if args.occlusions is not None:
+        depth_help = subprocess.run([str(args.depth_bin), "--benchmark-mask-check"],
+                                    capture_output=True, text=True, timeout=5)
+        if depth_help.returncode != 0 or "benchmark-mask-file supported" not in depth_help.stdout:
+            raise RuntimeError("Depth publisher lacks benchmark mask support; rebuild lidar_depth_velocity.")
     cfg = json.loads((args.deploy_bin.parent / "config.json").read_text())
     if max(args.speeds) > cfg["linear_velocity_clip"]:
         raise RuntimeError("Requested speed exceeds deployment linear_velocity_clip.")
@@ -166,6 +211,14 @@ def preflight(args):
         help_result = subprocess.run([str(args.sim_bin), "--help"], capture_output=True, text=True)
         if help_result.returncode != 0 or "benchmark-stair-contact-friction" not in help_result.stdout:
             raise RuntimeError("Simulator lacks stair friction control; rebuild unitree_mujoco_velocity.")
+    if args.hide_simulator_window:
+        help_result = subprocess.run([str(args.sim_bin), "--help"], capture_output=True, text=True)
+        if help_result.returncode != 0 or "benchmark-hide-window" not in help_result.stdout:
+            raise RuntimeError("Simulator lacks hidden-window support; rebuild unitree_mujoco_velocity.")
+    if args.video:
+        help_result = subprocess.run([str(args.sim_bin), "--help"], capture_output=True, text=True)
+        if help_result.returncode != 0 or "benchmark-replay-model" not in help_result.stdout:
+            raise RuntimeError("Simulator lacks shared video snapshot support; rebuild unitree_mujoco_velocity.")
     model = args.deploy_bin.parent / "model" / args.model_dir
     for name in ("policy.onnx", "sensor_estimator.onnx"):
         if not (model / name).is_file():
@@ -213,11 +266,23 @@ def stop_children(children):
             process.wait()
 
 
-def run_trial(args, directory, speed, seed):
+def run_trial(args, directory, speed, seed, occlusion=None):
     import zmq
 
     directory.mkdir()
-    argv = commands(args, directory, speed, seed)
+    if occlusion is not None:
+        from paper_occlusion import ALGORITHM, make_mask, write_pgm
+        height, width = map(int, args.fov.split("x"))
+        mask_seed = seed + 1_000_003  # Same offset as the Isaac Sim stair benchmark.
+        mask = make_mask(occlusion, height, width, mask_seed)
+        write_pgm(directory / "occlusion_mask.pgm", mask)
+        write_json(directory / "occlusion.json", {
+            "occlusion": occlusion, "mask_seed": mask_seed,
+            "masked_fraction": float(mask.mean()), "algorithm": ALGORITHM,
+            "width": width, "height": height, "scope": "fixed_within_trial",
+            "stage": "after_temporal_depth_aggregation", "fill_value": 1.0,
+            "cage_mask": "disabled_for_occlusion_suite"})
+    argv = commands(args, directory, speed, seed, occlusion)
     write_json(directory / "commands.json", argv)
     children, logs = [], []
     context = zmq.Context()
@@ -237,6 +302,8 @@ def run_trial(args, directory, speed, seed):
     policy_ready = policy_running = False
     safety_fault_during_trial = False
     next_tick = started
+    first_depth_written = False
+    latest_depth_message = None
     try:
         for name in ("simulator", "depth", "deploy"):
             log = (directory / f"{name}.log").open("w")
@@ -270,6 +337,10 @@ def run_trial(args, directory, speed, seed):
                     result["valid"] = True
                     result["timing_ok"] = 0.95 <= result["real_time_factor"] <= 1.05
                     result["controller_safety_fault"] = safety_fault_during_trial
+                    if latest_depth_message is not None:
+                        width, height, _, _ = decode_depth(latest_depth_message)
+                        write_depth_preview(directory / "depth_last.pgm", latest_depth_message,
+                                            width, height)
                     return result
                 for name, child in zip(("simulator", "depth", "deploy"), children):
                     if child.poll() is not None:
@@ -296,6 +367,12 @@ def run_trial(args, directory, speed, seed):
                             raise RuntimeError("Depth grid differs from requested FOV.")
                         if scan_ns > 0 and 0 <= time.time_ns() - scan_ns < 1_000_000_000:
                             last_depth = now
+                            if armed_at is not None:
+                                latest_depth_message = message
+                                if not first_depth_written:
+                                    write_depth_preview(directory / "depth_first.pgm", message,
+                                                        width, height)
+                                    first_depth_written = True
                         depth_csv.writerow([time.time_ns(), scan_ns, publish_ns,
                                             "trial" if armed_at else "startup"])
                 if armed_at is None:
@@ -347,8 +424,9 @@ def run_trial(args, directory, speed, seed):
 
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--speeds", type=float, nargs="+", default=[0.5, 1.0])
-    p.add_argument("--repeats", type=int, default=1, help="Paired trials per speed, run sequentially")
+    p.add_argument("--speeds", type=float, nargs="+", default=[0.5, 0.7])
+    p.add_argument("--repeats", type=int, default=1,
+                   help="Paired trials per speed and occlusion condition, run sequentially")
     p.add_argument("--terrain", choices=["flat", "boxes", "benchmark_stairs"], default="flat")
     p.add_argument("--box-task", choices=["ascent", "traverse"], default="ascent",
                    help="Boxes: climb onto box2 (default), or legacy far-edge crossing")
@@ -356,6 +434,8 @@ def parser():
                    help="Disable IMU heading correction on benchmark_stairs for comparison")
     p.add_argument("--stair-contact-friction", type=float, choices=[0.4, 1.0], default=0.4,
                    help="Effective foot-stair sliding friction, baseline 0.4 or diagnostic 1.0")
+    p.add_argument("--occlusions", nargs="+", choices=OCCLUSIONS,
+                   help="Opt-in Isaac-matched depth masks; standard is the clean suite control")
     p.add_argument("--stair-centering", action="store_true",
                    help="Use simulator lateral pose to command body-frame vy toward stair center")
     p.add_argument("--center-kp", type=float, default=0.8,
@@ -366,7 +446,7 @@ def parser():
     p.add_argument("--yaw-hold-kd", type=float, default=0.25)
     p.add_argument("--yaw-hold-max-wz", type=float, default=1.0,
                    help="Maximum stair heading correction in rad/s")
-    p.add_argument("--duration", type=float, help="Simulation seconds; flat=8, boxes=12, benchmark_stairs=16")
+    p.add_argument("--duration", type=float, help="Simulation seconds; flat=8, boxes=12, benchmark_stairs=30")
     p.add_argument("--warmup", type=float, default=2.0)
     p.add_argument("--min-progress-ratio", type=float, default=0.8)
     p.add_argument("--seed", type=int, default=0, help="Cage mask seed; incremented per pair")
@@ -383,6 +463,10 @@ def parser():
     p.add_argument("--startup-timeout", type=float, default=300)
     p.add_argument("--output", type=Path)
     p.add_argument("--video", action="store_true", help="Render all saved trajectories after the trials finish")
+    p.add_argument("--keep-diagnostics", action="store_true",
+                   help="Retain process logs, sent commands, and startup/status files for valid trials")
+    p.add_argument("--hide-simulator-window", action="store_true",
+                   help="Keep the live MuJoCo window hidden while physics and LiDAR run")
     p.add_argument("--render-backend", choices=["egl", "glfw", "osmesa"], default="egl")
     p.add_argument("--check", action="store_true", help="Check dependencies without starting trials")
     p.add_argument("--dry-run", action="store_true", help="Print exact process commands without launching")
@@ -397,10 +481,15 @@ def main():
     p = parser()
     args = p.parse_args()
     args.duration = args.duration if args.duration is not None else {
-        "flat": 8.0, "boxes": 12.0, "benchmark_stairs": 16.0
+        "flat": 8.0, "boxes": 12.0, "benchmark_stairs": 30.0
     }[args.terrain]
     if args.terrain == "benchmark_stairs" and args.box_task != "ascent":
         p.error("--box-task applies only to the boxes terrain.")
+    if args.occlusions is not None:
+        if args.terrain != "benchmark_stairs":
+            p.error("--occlusions requires --terrain benchmark_stairs.")
+        if len(set(args.occlusions)) != len(args.occlusions):
+            p.error("Each occlusion condition may be listed only once.")
     if args.terrain != "benchmark_stairs" and (args.stair_centering or args.stair_contact_friction != 0.4):
         p.error("Stair centering and stair friction settings require --terrain benchmark_stairs.")
     if not math.isfinite(args.center_kp) or args.center_kp <= 0 or \
@@ -422,7 +511,10 @@ def main():
         setattr(args, attr, getattr(args, attr).expanduser().resolve())
     output = (args.output or HERE / "runs" / time.strftime("%Y%m%d-%H%M%S")).expanduser().resolve()
     if args.dry_run:
-        print(json.dumps(commands(args, output / "pair001_v0.8", args.speeds[0], args.seed), indent=2))
+        occlusion = args.occlusions[0] if args.occlusions is not None else None
+        label = f"_{occlusion}" if occlusion is not None else ""
+        print(json.dumps(commands(args, output / f"pair001{label}_v{args.speeds[0]:g}",
+                                  args.speeds[0], args.seed, occlusion), indent=2))
         return 0
     model = preflight(args)
     if args.check:
@@ -436,6 +528,14 @@ def main():
                            args.deploy_bin.parent / "config.json", args.deploy_bin,
                            args.sim_bin, args.depth_bin, HERE / "run.py",
                            HERE / "velocity_trial.h", HERE / "box_ascent.h"]}
+    if args.occlusions is not None:
+        manifest["hashes"][str(HERE / "paper_occlusion.py")] = sha256(HERE / "paper_occlusion.py")
+        manifest["occlusion_protocol"] = {
+            "source": "JEPLO-autodl/training/scripts/stair_occlusion_masks.py",
+            "mask_seed": "seed + pair_index + 1000003",
+            "scope": "fixed within each trial; paired across speeds and conditions",
+            "stage": "after temporal depth aggregation", "fill_value": 1.0,
+            "cage_mask": "disabled for every selected condition including standard"}
     if args.terrain == "benchmark_stairs":
         manifest["hashes"][str(STAIR_SCENE)] = sha256(STAIR_SCENE)
     manifest["git_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
@@ -445,13 +545,16 @@ def main():
     interrupted = False
     print(f"Results: {output}", flush=True)
     print(f"Scoring rule: {scoring_rule(args)}", flush=True)
+    conditions = args.occlusions if args.occlusions is not None else [None]
     for pair in range(args.repeats):
         speeds = args.speeds if pair % 2 == 0 else list(reversed(args.speeds))
-        for speed in speeds:
-            directory = output / f"pair{pair + 1:03d}_v{speed:g}"
-            print(f"Pair {pair + 1}/{args.repeats}, {speed:g} m/s, {args.terrain}", flush=True)
+        for occlusion, speed in itertools.product(conditions, speeds):
+            label = f"_{occlusion}" if occlusion is not None else ""
+            directory = output / f"pair{pair + 1:03d}{label}_v{speed:g}"
+            print(f"Pair {pair + 1}/{args.repeats}, {speed:g} m/s, {args.terrain}"
+                  f"{', ' + occlusion if occlusion is not None else ''}", flush=True)
             try:
-                result = run_trial(args, directory, speed, args.seed + pair)
+                result = run_trial(args, directory, speed, args.seed + pair, occlusion)
             except KeyboardInterrupt:
                 result = {"valid": False, "success": False, "outcome": "interrupted", "error": "User interrupted"}
                 interrupted = True
@@ -460,11 +563,20 @@ def main():
                 # Infrastructure failures need attention; avoid repeating a broken setup.
                 interrupted = True
             result.update(pair_id=pair + 1, command_mps=speed, directory=str(directory))
+            if occlusion is not None:
+                meta = None
+                meta_path = directory / "occlusion.json"
+                if meta_path.exists():
+                    meta = json.loads(meta_path.read_text())
+                result.update(occlusion=occlusion, mask_seed=args.seed + pair + 1_000_003,
+                              masked_fraction=meta["masked_fraction"] if meta else None)
             result.setdefault("scoring_rule", scoring_rule(args))
             result.setdefault("terrain", args.terrain)
             result.setdefault("box_task", args.box_task if args.terrain == "boxes" else None)
             results.append(result)
             export_results(output, results)
+            if result["valid"]:
+                prune_successful_trial(directory, args.keep_diagnostics)
             print(f"  {result['outcome']}: {result.get('error', '')}", flush=True)
             if result["valid"]:
                 print(f"  Mean vx={result['mean_speed_mps']:.3f} m/s; "
@@ -489,7 +601,8 @@ def main():
                     print(f"Video failed for {directory}; state.csv is preserved for a later retry.", file=sys.stderr)
     for row in summarize(results):
         rate = "n/a" if row["success_rate"] is None else f"{100 * row['success_rate']:.1f}%"
-        print(f"{row['command_mps']:g} m/s [{row['scoring_rule']}]: "
+        label = f"{row['occlusion']}, " if "occlusion" in row else ""
+        print(f"{label}{row['command_mps']:g} m/s [{row['scoring_rule']}]: "
               f"{row['successes']}/{row['valid_trials']} success ({rate}); "
               f"{row['invalid_trials']} invalid")
     print(f"Full results: {output / 'results.csv'}")

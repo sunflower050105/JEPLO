@@ -46,12 +46,15 @@ int main() {
     require(model, error);
     const auto run = [&](const std::string &name, const std::string &terrain,
                          double duration, const std::function<void(mjData *, double)> &pose,
-                         const std::string &outcome, const std::string &box_task = "ascent") {
+                         const std::string &outcome, const std::string &box_task = "ascent",
+                         bool record_video = false) {
         const auto directory = root / name;
         std::filesystem::create_directory(directory);
         std::ofstream(directory / "GO");
         mjData *data = mj_makeData(model);
-        velocity_benchmark::Trial trial({directory.string(), terrain, duration, 1.0, 0.8, box_task});
+        velocity_benchmark::Trial trial({directory.string(), terrain, duration, 1.0, 0.8,
+                                         box_task, 0.4,
+                                         record_video ? (root / "render_model.mjb").string() : ""});
         bool done = false;
         for (int i = 0; i <= static_cast<int>((duration + 0.5) * 100) && !done; ++i) {
             const double t = i / 100.0;
@@ -66,7 +69,12 @@ int main() {
         content << result.rdbuf();
         require(content.str().find("\"outcome\": \"" + outcome + "\"") != std::string::npos,
                 name + " wrong outcome: " + content.str());
-        require(std::filesystem::file_size(directory / "scene.mjb") > 0, "Missing replay model");
+        require(!std::filesystem::exists(directory / "scene.mjb"), "Per-trial model must not be saved");
+        require(std::filesystem::exists(directory / "state.csv") == record_video,
+                "Unexpected video state trace");
+        if (record_video)
+            require(std::filesystem::file_size(root / "render_model.mjb") > 0,
+                    "Missing shared replay model");
         if (terrain == "boxes" && box_task == "ascent") {
             require(content.str().find("\"scoring_rule\": \"box_ascent_v2\"") != std::string::npos,
                     "Missing ascent scoring version");
@@ -76,6 +84,10 @@ int main() {
         mj_deleteData(data);
     };
     run("moving", "flat", 1.0, [](mjData *d, double t) { d->qpos[0] = t; }, "success");
+    run("moving_video", "flat", 1.0, [](mjData *d, double t) { d->qpos[0] = t; },
+        "success", "ascent", true);
+    run("moving_video_second", "flat", 1.0, [](mjData *d, double t) { d->qpos[0] = t; },
+        "success", "ascent", true);
     run("stationary", "flat", 1.0, [](mjData *, double) {}, "timeout");
     run("fall", "flat", 1.0, [](mjData *d, double) { d->qpos[2] = 0.1; }, "fall");
     run("transient", "flat", 1.0, [](mjData *d, double t) {
@@ -117,7 +129,7 @@ int main() {
     mjData *friction_data = mj_makeData(model);
     mj_forward(model, friction_data);
     velocity_benchmark::Trial friction_trial({friction_dir.string(), "benchmark_stairs",
-                                               1.0, 0.8, 0.8, "ascent", 1.0});
+                                               1.0, 0.8, 0.8, "ascent", 1.0, ""});
     friction_trial.update(model, friction_data);
     const int stair_id = mj_name2id(model, mjOBJ_GEOM, "benchmark_step1");
     require(model->geom_priority[stair_id] == 1, "Stair friction priority was not raised");

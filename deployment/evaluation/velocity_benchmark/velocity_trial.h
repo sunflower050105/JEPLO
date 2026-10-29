@@ -23,6 +23,7 @@ struct Config {
     double min_progress_ratio = 0.8;
     std::string box_task = "ascent";
     double stair_contact_friction = 0.4;
+    std::string replay_model_path;
 };
 
 class Trial {
@@ -82,15 +83,18 @@ class Trial {
             } else if (config_.terrain == "benchmark_stairs") {
                 ascent_ = std::make_unique<BoxAscent>(m, "benchmark_stair_landing");
             }
-            mj_saveModel(m, path("scene.mjb").c_str(), nullptr, 0);
-            csv_.open(path("state.csv"));
-            if (!csv_) throw std::runtime_error("Cannot create benchmark state.csv");
-            csv_ << "wall_ns,sim_time_s,trial_time_s,x_m,y_m,z_m,forward_m,"
+            if (!config_.replay_model_path.empty()) {
+                if (!std::filesystem::exists(config_.replay_model_path))
+                    mj_saveModel(m, config_.replay_model_path.c_str(), nullptr, 0);
+                csv_.open(path("state.csv"));
+                if (!csv_) throw std::runtime_error("Cannot create benchmark state.csv");
+                csv_ << "wall_ns,sim_time_s,trial_time_s,x_m,y_m,z_m,forward_m,"
                     "forward_speed_mps,roll_deg,pitch_deg,yaw_deg,tilt_deg,fall_condition";
-            for (int i = 0; i < m->nq; ++i) csv_ << ",qpos_" << i;
-            csv_ << ",ascent_on_top_mask,ascent_contact_mask,ascent_recent_contact_mask,"
+                for (int i = 0; i < m->nq; ++i) csv_ << ",qpos_" << i;
+                csv_ << ",ascent_on_top_mask,ascent_contact_mask,ascent_recent_contact_mask,"
                     "ascent_candidate,ascent_hold_s";
-            csv_ << '\n';
+                csv_ << '\n';
+            }
             armed_ = true;
             last_x_ = x0_;
             std::cout << "[VelocityTrial] ARMED speed=" << config_.speed
@@ -108,16 +112,18 @@ class Trial {
         }
         max_tilt_ = std::max(max_tilt_, tilt);
         const BoxAscent::State ascent = ascent_ ? ascent_->update(m, d, elapsed) : BoxAscent::State{};
-        csv_ << std::setprecision(12) << wall_ns << ',' << d->time << ',' << elapsed
+        if (csv_.is_open()) {
+            csv_ << std::setprecision(12) << wall_ns << ',' << d->time << ',' << elapsed
              << ',' << p[0] << ',' << p[1] << ',' << p[2] << ',' << p[0] - x0_
              << ',' << velocity << ',' << roll << ',' << pitch << ',' << yaw
              << ',' << tilt << ',' << fall;
-        for (int i = 0; i < m->nq; ++i) csv_ << ',' << d->qpos[i];
-        csv_ << ',' << ascent.on_top_mask << ',' << ascent.contact_mask
+            for (int i = 0; i < m->nq; ++i) csv_ << ',' << d->qpos[i];
+            csv_ << ',' << ascent.on_top_mask << ',' << ascent.contact_mask
              << ',' << ascent.recent_contact_mask << ',' << ascent.candidate << ',' << ascent.hold_s;
-        csv_ << '\n';
-        // Flush a small 50 Hz trace so it survives an interrupted process.
-        csv_.flush();
+            csv_ << '\n';
+            // Flush the optional replay trace so it survives an interrupted process.
+            csv_.flush();
+        }
         last_sample_ = elapsed;
         last_x_ = p[0];
         next_sample_ = elapsed + 0.02;

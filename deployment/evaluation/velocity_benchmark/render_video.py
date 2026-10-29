@@ -35,7 +35,10 @@ def main():
     result = json.loads(result_path.read_text()) if result_path.exists() else {}
     if result.get("mujoco_version", mujoco.__version__) != mujoco.__version__:
         raise RuntimeError(f"Install mujoco=={result['mujoco_version']} to load this MJB snapshot.")
-    model = mujoco.MjModel.from_binary_path(str(args.trial / "scene.mjb"))
+    shared_model = args.trial.parent / "render_model.mjb"
+    # Older runs stored one snapshot per trial.
+    model_path = shared_model if shared_model.exists() else args.trial / "scene.mjb"
+    model = mujoco.MjModel.from_binary_path(str(model_path))
     data = mujoco.MjData(model)
     times = np.array([float(row["trial_time_s"]) for row in rows])
     model.vis.global_.offwidth = max(model.vis.global_.offwidth, args.width)

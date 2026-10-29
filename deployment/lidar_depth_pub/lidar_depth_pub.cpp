@@ -54,6 +54,7 @@ which is included as part of this source code package.
 #include <cstdlib>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <mutex>
@@ -374,6 +375,36 @@ static void applyOcclusionMask(float *grid, const bool *mask) {
     }
 }
 
+#ifdef JEPLO_VELOCITY_BENCHMARK
+// The benchmark pattern is applied after temporal aggregation, matching the
+// depth-image intervention used in training. Its PGM is saved with the trial.
+static bool loadBenchmarkMask(const std::string &path, std::vector<uint8_t> *mask) {
+    std::ifstream file(path, std::ios::binary);
+    std::string magic;
+    int width = 0, height = 0, max_value = 0;
+    if (!(file >> magic >> width >> height >> max_value) || magic != "P5" ||
+        width != gGridCols || height != kGridRows || max_value != 255 ||
+        file.get() != '\n') {
+        std::cerr << "[LidarDepth] Invalid benchmark mask header: " << path << '\n';
+        return false;
+    }
+    mask->resize(gGridSize);
+    file.read(reinterpret_cast<char *>(mask->data()), gGridSize);
+    if (file.gcount() != gGridSize || file.peek() != std::char_traits<char>::eof() ||
+        std::any_of(mask->begin(), mask->end(), [](uint8_t pixel) {
+            return pixel != 0 && pixel != 255;
+        })) {
+        std::cerr << "[LidarDepth] Invalid benchmark mask pixels: " << path << '\n';
+        return false;
+    }
+    const int count = static_cast<int>(std::count(mask->begin(), mask->end(), uint8_t{255}));
+    std::cout << "[LidarDepth] Benchmark depth occlusion: " << count << "/"
+              << gGridSize << " pixels (" << 100.0f * count / gGridSize << "%) from "
+              << path << std::endl;
+    return true;
+}
+#endif
+
 // Apply only to the expanded 25x120 layout. The 25x60 and 25x90 layouts are
 // intentionally unchanged.
 static void applyWideBottomCornerMask(float *grid) {
@@ -652,7 +683,8 @@ static void projectRawPointsToGrid(
 }
 
 static void runZmqSource(
-    int sub_port, int pub_port, const bool *occlusion_mask, int downsample_rate, int num_stacked) {
+    int sub_port, int pub_port, const bool *occlusion_mask, int downsample_rate,
+    int num_stacked, const uint8_t *benchmark_mask = nullptr) {
     downsample_rate = std::max(downsample_rate, 1);
     num_stacked = std::max(num_stacked, 1);
 
@@ -844,6 +876,11 @@ static void runZmqSource(
                     if (sim_target_mask[pixel]) aggregated[pixel] = 1.0f;
                 }
             }
+            if (benchmark_mask) {
+                for (int pixel = 0; pixel < gGridSize; ++pixel) {
+                    if (benchmark_mask[pixel]) aggregated[pixel] = 1.0f;
+                }
+            }
             scan_ns = newest_scan_ns;
         }
 
@@ -891,6 +928,9 @@ int main(int argc, char *argv[]) {
     int downsample_rate = 1;
     int num_stacked = kDefaultNumStacked;
     std::vector<BandPattern> band_patterns;
+#ifdef JEPLO_VELOCITY_BENCHMARK
+    std::string benchmark_mask_file;
+#endif
     for (int i = 1; i < argc; ++i) {
         std::string arg(argv[i]);
         if (arg == "--port" && i + 1 < argc) {
@@ -928,6 +968,16 @@ int main(int argc, char *argv[]) {
             fov_specified = true;
         }
 #ifdef JEPLO_VELOCITY_BENCHMARK
+        else if (arg == "--benchmark-mask-check") {
+            std::cout << "benchmark-mask-file supported\n";
+            return 0;
+        } else if (arg == "--benchmark-mask-file") {
+            if (i + 1 >= argc) {
+                std::cerr << "--benchmark-mask-file requires a PGM path\n";
+                return 1;
+            }
+            benchmark_mask_file = argv[++i];
+        }
         else if (arg == "--cage-seed") {
             try {
                 if (i + 1 >= argc) throw std::invalid_argument("missing seed");
@@ -989,11 +1039,23 @@ int main(int argc, char *argv[]) {
     }
     addBezierBandMasks(cage_mask, band_patterns);
 
+#ifdef JEPLO_VELOCITY_BENCHMARK
+    std::vector<uint8_t> benchmark_mask;
+    if (!benchmark_mask_file.empty() &&
+        !loadBenchmarkMask(benchmark_mask_file, &benchmark_mask)) return 1;
+#endif
+
     if (use_sim) {
         // ── ZMQ-to-ZMQ mode: receive from unitree_mujoco, publish depth ─────
         std::cout << "[LidarDepth] Using simulation source (ZMQ SUB port " << sim_port << ")"
                   << std::endl;
-        runZmqSource(sim_port, port, cage_mask, downsample_rate, num_stacked);
+        runZmqSource(sim_port, port, cage_mask, downsample_rate, num_stacked,
+#ifdef JEPLO_VELOCITY_BENCHMARK
+                     benchmark_mask.empty() ? nullptr : benchmark_mask.data()
+#else
+                     nullptr
+#endif
+        );
         return 0;
     }
 

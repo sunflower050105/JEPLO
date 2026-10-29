@@ -1,10 +1,12 @@
 import struct
 import unittest
+import tempfile
 from pathlib import Path
 from unittest import mock
 import xml.etree.ElementTree as ET
 
 import run
+from paper_occlusion import PATTERNS, make_mask, write_pgm
 
 
 class ProtocolTests(unittest.TestCase):
@@ -22,6 +24,22 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(run.decode_depth(frame), (60, 25, 100, 200))
         self.assertIsNone(run.decode_depth(frame[:-1]))
         self.assertIsNone(run.decode_depth(b"bad"))
+
+    def test_depth_preview_and_lightweight_trial_cleanup(self):
+        values = (0.0, 0.5, 1.0, float("nan"))
+        frame = struct.pack("=II4fQQ", 2, 2, *values, 100, 200)
+        with tempfile.TemporaryDirectory() as path:
+            trial = Path(path)
+            run.write_depth_preview(trial / "depth_first.pgm", frame, 2, 2)
+            self.assertEqual((trial / "depth_first.pgm").read_bytes(),
+                             b"P5\n2 2\n255\n" + bytes((0, 128, 255, 255)))
+            for name in ("result.json", "depth_timing.csv", "occlusion_mask.pgm",
+                         "simulator.log", "sent_commands.csv", "GO"):
+                (trial / name).touch()
+            run.prune_successful_trial(trial)
+            self.assertEqual({p.name for p in trial.iterdir()},
+                             {"result.json", "depth_timing.csv", "occlusion_mask.pgm",
+                              "depth_first.pgm"})
 
     def test_invalid_runs_do_not_inflate_failure_rate(self):
         summary = run.summarize([
@@ -60,7 +78,8 @@ class ProtocolTests(unittest.TestCase):
             self.assertNotIn("--scene", command)
 
     def test_stair_benchmark_uses_distinct_rule_and_fixed_speed_commands(self):
-        args = run.parser().parse_args(["--terrain", "benchmark_stairs"])
+        args = run.parser().parse_args(["--terrain", "benchmark_stairs",
+                                        "--speeds", "0.8", "1.0"])
         args.duration = 16.0
         self.assertEqual(args.speeds, [0.8, 1.0])
         self.assertEqual(run.scoring_rule(args), "stair_landing_v1")
@@ -93,6 +112,78 @@ class ProtocolTests(unittest.TestCase):
             {"y_m": 0.25, "course_center_y_m": 0.05}, 0.8, 0.3), -0.16)
         self.assertEqual(run.stair_centering_vy(
             {"y_m": -1.0, "course_center_y_m": 0.0}, 0.8, 0.3), 0.3)
+
+    def test_hidden_window_flag_only_changes_simulator_command(self):
+        ordinary = run.parser().parse_args(["--terrain", "benchmark_stairs"])
+        hidden = run.parser().parse_args(["--terrain", "benchmark_stairs",
+                                          "--hide-simulator-window"])
+        ordinary.duration = hidden.duration = 30.0
+        visible_commands = run.commands(ordinary, Path("/tmp/stairs"), 0.8, 17)
+        hidden_commands = run.commands(hidden, Path("/tmp/stairs"), 0.8, 17)
+        self.assertEqual(hidden_commands["simulator"],
+                         visible_commands["simulator"] + ["--benchmark-hide-window"])
+        self.assertEqual(hidden_commands["depth"], visible_commands["depth"])
+        self.assertEqual(hidden_commands["deploy"], visible_commands["deploy"])
+
+    def test_video_uses_one_shared_model_snapshot(self):
+        args = run.parser().parse_args(["--video"])
+        args.duration = 8.0
+        first = run.commands(args, Path("/tmp/run/pair001_v0.8"), 0.8, 17)["simulator"]
+        second = run.commands(args, Path("/tmp/run/pair002_v0.8"), 0.8, 18)["simulator"]
+        expected = "/tmp/run/render_model.mjb"
+        self.assertEqual(first[first.index("--benchmark-replay-model") + 1], expected)
+        self.assertEqual(second[second.index("--benchmark-replay-model") + 1], expected)
+        self.assertNotIn("--benchmark-replay-model",
+                         run.commands(run.parser().parse_args([]),
+                                      Path("/tmp/run/pair003_v0.8"), 0.8, 19)["simulator"])
+
+    def test_paper_occlusion_matches_isaac_protocol_without_altering_baseline(self):
+        self.assertEqual(PATTERNS, run.OCCLUSIONS)
+        baseline = run.parser().parse_args(["--terrain", "benchmark_stairs"])
+        suite = run.parser().parse_args(["--terrain", "benchmark_stairs",
+                                         "--occlusions", *PATTERNS])
+        baseline.duration = suite.duration = 30.0
+        self.assertEqual(baseline.stair_contact_friction, 0.4)
+        ordinary = run.commands(baseline, Path("/tmp/standard"), 0.8, 17)
+        standard = run.commands(suite, Path("/tmp/standard"), 0.8, 17, "standard")
+        blob = run.commands(suite, Path("/tmp/blob"), 0.8, 17, "blob")
+        self.assertNotIn("--benchmark-mask-file", ordinary["depth"])
+        self.assertNotIn("--no-cage-mask", ordinary["depth"])
+        self.assertIn("--no-cage-mask", standard["depth"])
+        self.assertEqual(blob["depth"][-2:],
+                         ["--benchmark-mask-file", "/tmp/blob/occlusion_mask.pgm"])
+        self.assertEqual(ordinary["simulator"], standard["simulator"])
+        self.assertEqual(ordinary["deploy"], blob["deploy"])
+
+    def test_mask_is_deterministic_and_saved_for_depth_publisher(self):
+        seed = 1_000_020
+        with tempfile.TemporaryDirectory() as directory:
+            for pattern in PATTERNS:
+                mask = make_mask(pattern, 25, 60, seed)
+                self.assertEqual(mask.shape, (25, 60))
+                self.assertEqual(mask.dtype.name, "bool")
+                self.assertEqual(mask.tobytes(), make_mask(pattern, 25, 60, seed).tobytes())
+                if pattern == "standard":
+                    self.assertEqual(int(mask.sum()), 0)
+                else:
+                    self.assertGreater(int(mask.sum()), 100)
+                    self.assertLess(int(mask.sum()), 1200)
+                path = Path(directory) / f"{pattern}.pgm"
+                write_pgm(path, mask)
+                header = b"P5\n60 25\n255\n"
+                self.assertTrue(path.read_bytes().startswith(header))
+                self.assertEqual(len(path.read_bytes()), len(header) + 25 * 60)
+
+    def test_occlusion_success_rates_are_separated(self):
+        rows = [
+            {"occlusion": "standard", "command_mps": 0.8, "valid": True,
+             "success": True, "scoring_rule": "stair_landing_v1"},
+            {"occlusion": "cut", "command_mps": 0.8, "valid": True,
+             "success": False, "scoring_rule": "stair_landing_v1"},
+        ]
+        summary = {row["occlusion"]: row for row in run.summarize(rows)}
+        self.assertEqual(summary["standard"]["success_rate"], 1.0)
+        self.assertEqual(summary["cut"]["success_rate"], 0.0)
 
     def test_controller_fault_before_command_is_invalid(self):
         with self.assertRaisesRegex(RuntimeError, "before the trial command"):

@@ -67,6 +67,12 @@ export LD_LIBRARY_PATH="/home/lin/ubuntu_22_04/onnxruntime-linux-x64-gpu-1.22.0/
 
 ## First two videos
 
+To run benchmark trials without showing the live MuJoCo window, add
+`--hide-simulator-window` to `run.py`. Physics and LiDAR still run, and `--video`
+still renders saved trajectories afterward. The simulator still needs `DISPLAY`
+for its hidden OpenGL context. `--render-backend egl` controls the offline video
+renderer, not the live simulator window.
+
 Close previous MuJoCo, depth-publisher, policy, and keyboard-controller processes.
 The runner starts all three processes itself and replaces the keyboard controller.
 It is restricted to loopback simulation, DDS domain 1; it does not target hardware.
@@ -138,8 +144,9 @@ reference resets at a stopped command; each trial starts a new controller.
 Set `--yaw-hold-kp`, `--yaw-hold-kd`, or `--yaw-hold-max-wz` to tune this
 behavior. Use `--no-stair-yaw-hold` for an open-loop yaw comparison. The
 controller writes target, measured yaw, error, and corrective `wz` to
-`deploy.log` about once per second. `sent_commands.csv` records the external
-commands, whose `command_wz` stays zero. The hold cannot correct lateral
+`deploy.log` about once per second during a trial. Use `--keep-diagnostics`
+to retain that log and `sent_commands.csv` after a valid trial; the external
+commands have `command_wz` zero. The hold cannot correct lateral
 displacement or create traction if the robot is physically stuck; inspect the
 video and heading log before interpreting a failure.
 
@@ -156,6 +163,48 @@ and `--center-max-vy`. This simulator-pose feedback is privileged information,
 so its results should be labelled as a diagnostic, not a reproduction of the
 paper's benchmark. Keep each friction/centering condition in its own output
 directory and compare the same seeds across conditions.
+
+### Four Fig. 5 occlusion conditions
+
+The opt-in `--occlusions` suite uses the mask generator from
+`JEPLO-autodl/training/scripts/stair_occlusion_masks.py`: `standard` (clean),
+`blob`, `cross`, `cut`, and `stripe`. The four geometric masks approximate
+Fig. 5(a-d); the paper does not publish exact generator parameters. For each
+trial, the mask seed is `--seed + pair_index + 1000003`, matching the Isaac Sim
+benchmark, and the mask stays fixed throughout the trial. Each masked pixel
+becomes normalized depth `1.0` after temporal scan aggregation, so every
+policy depth frame receives the same mask. The `.pgm` mask and metadata are
+saved in each trial directory.
+
+When `--occlusions` is present, the depth publisher disables its regular cage
+mask for **all** selected conditions, including `standard`, matching the clean
+depth control in the Isaac Sim occlusion benchmark. Without `--occlusions`,
+the existing baseline depth path and output columns are unchanged. Compare
+occlusion conditions with the suite's own `standard`, not with an older run
+that used the regular cage mask. The runner groups `summary.csv` by occlusion
+and speed; the model, stair physics, commands, and success rule are shared.
+
+First try `--repeats 1 --video`, then use a fresh output directory for the
+full success-rate run. For 100 trials per speed and condition (1,000 trials):
+
+```bash
+deployment/evaluation/velocity_benchmark/.venv/bin/python \
+  deployment/evaluation/velocity_benchmark/run.py \
+  --model-dir my_policy_r2 --terrain benchmark_stairs \
+  --speeds 0.8 1.0 --repeats 100 --seed 17 \
+  --stair-contact-friction 0.4 \
+  --occlusions standard blob cross cut stripe \
+  --hide-simulator-window \
+  --output deployment/evaluation/velocity_benchmark/runs/stairs_occlusion_100pairs
+```
+
+For a direct Isaac Sim versus MuJoCo comparison, use the same velocity values,
+time limit, seed, checkpoint, mask conditions, and number of trials in both
+runners. The Isaac benchmark currently defaults to 0.5 and 0.7 m/s with a
+16-second limit; the command above uses the 0.8 and 1.0 m/s values and
+30-second limit from the earlier MuJoCo stair tests. The Isaac scorer uses a
+contact-force proxy while MuJoCo checks landing geom contacts, so a remaining
+rate difference also includes that scoring difference.
 
 Success (`stair_landing_v1`) means all four feet fit on the top landing, each
 has made geometric contact with its top within 0.5 s, and the base is within
@@ -295,22 +344,26 @@ The run folder contains:
 - `manifest.json`: settings, model/binary/config SHA-256 hashes, Git revision,
   and whether the checkout had local changes.
 
-Each trial subfolder contains:
+Each valid trial subfolder contains:
 
-- `video.mp4`: rendered recorded motion, with speed/time/tilt labels.
-- `state.csv`: simulation time, wall timestamp, world position, forward speed,
-  roll/pitch/yaw/tilt, and every generalized position used to render the video.
-  Ascent diagnostics follow the `qpos_*` columns: `ascent_on_top_mask`,
-  `ascent_contact_mask`, `ascent_recent_contact_mask`, `ascent_candidate`, and
-  `ascent_hold_s`. Mask bits 1/2/4/8 mean FL/FR/RL/RR; 15 means all four.
-- `scene.mjb`: model snapshot with the actual terrain layout.
 - `result.json`: physical outcome and metrics, including real-time factor,
   scoring rule, ascent time (null unless successful ascent), and ascent thresholds.
-- `start.json`: measured starting pose and command-switch wall timestamp.
-- `sent_commands.csv`: commands sent at 50 Hz wall clock, including warmup.
-- `depth_timing.csv`: depth timestamps observed by an additional subscriber.
-- `deploy.log`, `depth.log`, `simulator.log`: original process diagnostics.
-- `commands.json`: exact argument arrays for the three child processes.
+- `depth_first.pgm` and `depth_last.pgm`: small 8-bit previews of the first and
+  last fresh normalized depth grids observed during the commanded phase. Gray
+  value 255 means 2 m or farther (and also represents an occluded pixel).
+  These previews show the grid after the selected mask is applied.
+- `depth_timing.csv`: timestamps for all observed depth frames.
+- `occlusion.json` and `occlusion_mask.pgm` when `--occlusions` is used.
+
+By default, the runner removes process logs, command traces, and temporary
+startup/status files after a valid trial. It retains them for an invalid trial
+so the failure can be diagnosed. Use `--keep-diagnostics` to retain these files
+for valid trials too. No `scene.mjb` is written in any trial subfolder.
+
+With `--video`, each trial also contains `video.mp4`, `first_frame.png`, and
+`state.csv` (the 50 Hz pose trace for re-rendering). The run folder contains one
+shared `render_model.mjb` for all videos. Ordinary runs save neither a model
+snapshot nor a pose trace, making large batches much smaller on disk.
 
 The new observer does **not** tell you precisely when the estimator consumed
 each frame. `publisher_scan_receive_ns` is when the depth publisher received its
@@ -339,9 +392,12 @@ retry them separately before estimating a success rate.
 The command sender and simulator communicate asynchronously. The GO marker and
 first forward message occur in one runner iteration, but the controller consumes
 the command on its next cycle. The boundary is therefore not an exact lockstep
-control tick; raw timestamps are saved rather than claiming perfect alignment.
+control tick. Use `--keep-diagnostics` when exact command timestamps are needed.
 
 ## Rendering again without rerunning the robot
+
+This requires a run originally recorded with `--video` and its shared
+`render_model.mjb` and per-trial `state.csv` files.
 
 ```bash
 deployment/evaluation/velocity_benchmark/.venv/bin/python \

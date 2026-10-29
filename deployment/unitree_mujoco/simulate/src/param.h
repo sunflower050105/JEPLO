@@ -44,6 +44,8 @@ inline struct SimulationConfig {
     double benchmark_speed = 0.8;
     double benchmark_min_progress_ratio = 0.8;
     double benchmark_stair_contact_friction = 0.4;
+    bool benchmark_hide_window = false;
+    std::string benchmark_replay_model;
 
     void load_from_yaml(const std::string &filename) {
         auto cfg = YAML::LoadFile(filename);
@@ -108,7 +110,10 @@ inline po::variables_map helper(int argc, char **argv) {
         "Flat success requires this fraction of command * duration (default: 0.8)")(
         "benchmark-stair-contact-friction",
         po::value<double>(&config.benchmark_stair_contact_friction),
-        "Effective stair foot sliding friction for diagnostic runs (0.4 or 1.0)");
+        "Effective stair foot sliding friction for diagnostic runs (0.4 or 1.0)")(
+        "benchmark-hide-window", "Create the benchmark simulator window hidden")(
+        "benchmark-replay-model", po::value<std::string>(&config.benchmark_replay_model),
+        "Shared MuJoCo model snapshot path for optional video rendering");
 #endif
 
     po::variables_map vm;
@@ -139,6 +144,7 @@ inline po::variables_map helper(int argc, char **argv) {
         }
     }
     if (!config.benchmark_directory.empty()) {
+        config.benchmark_hide_window = vm.count("benchmark-hide-window") != 0;
         if (!config.enable_lidar ||
             (config.benchmark_terrain != "flat" && config.benchmark_terrain != "boxes" &&
              config.benchmark_terrain != "benchmark_stairs") ||
