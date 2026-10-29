@@ -71,6 +71,14 @@ def prune_successful_trial(directory, keep_diagnostics=False):
         (directory / name).unlink(missing_ok=True)
 
 
+def require_compact_simulator(sim_bin):
+    help_result = subprocess.run([str(sim_bin), "--help"], capture_output=True,
+                                 text=True, timeout=5)
+    if help_result.returncode != 0 or "benchmark-replay-model" not in help_result.stdout:
+        raise RuntimeError("Simulator binary still saves scene.mjb in every trial. "
+                           "Rebuild unitree_mujoco_velocity in Ubuntu 22.04 before running.")
+
+
 def check_tcp_port_available(port):
     """Reject live listeners without treating a prior trial's TIME_WAIT as occupied."""
     with socket.socket() as sock:
@@ -194,6 +202,7 @@ def preflight(args):
         missing = [line.strip() for line in linked.stdout.splitlines() if "not found" in line]
         if missing:
             raise RuntimeError(f"{binary.name}: missing libraries: {missing}. Set LD_LIBRARY_PATH as documented.")
+    require_compact_simulator(args.sim_bin)
     if args.occlusions is not None:
         depth_help = subprocess.run([str(args.depth_bin), "--benchmark-mask-check"],
                                     capture_output=True, text=True, timeout=5)
@@ -215,10 +224,6 @@ def preflight(args):
         help_result = subprocess.run([str(args.sim_bin), "--help"], capture_output=True, text=True)
         if help_result.returncode != 0 or "benchmark-hide-window" not in help_result.stdout:
             raise RuntimeError("Simulator lacks hidden-window support; rebuild unitree_mujoco_velocity.")
-    if args.video:
-        help_result = subprocess.run([str(args.sim_bin), "--help"], capture_output=True, text=True)
-        if help_result.returncode != 0 or "benchmark-replay-model" not in help_result.stdout:
-            raise RuntimeError("Simulator lacks shared video snapshot support; rebuild unitree_mujoco_velocity.")
     model = args.deploy_bin.parent / "model" / args.model_dir
     for name in ("policy.onnx", "sensor_estimator.onnx"):
         if not (model / name).is_file():

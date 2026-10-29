@@ -41,6 +41,14 @@ class ProtocolTests(unittest.TestCase):
                              {"result.json", "depth_timing.csv", "occlusion_mask.pgm",
                               "depth_first.pgm"})
 
+    def test_old_simulator_is_rejected_before_starting_a_batch(self):
+        with mock.patch.object(run.subprocess, "run") as execute:
+            execute.return_value = mock.Mock(returncode=0, stdout="--benchmark-hide-window")
+            with self.assertRaisesRegex(RuntimeError, "still saves scene.mjb"):
+                run.require_compact_simulator(Path("/tmp/old_simulator"))
+            execute.return_value = mock.Mock(returncode=0, stdout="--benchmark-replay-model")
+            run.require_compact_simulator(Path("/tmp/new_simulator"))
+
     def test_invalid_runs_do_not_inflate_failure_rate(self):
         summary = run.summarize([
             {"command_mps": 0.8, "valid": True, "success": True},

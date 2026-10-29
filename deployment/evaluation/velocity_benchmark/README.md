@@ -359,6 +359,9 @@ By default, the runner removes process logs, command traces, and temporary
 startup/status files after a valid trial. It retains them for an invalid trial
 so the failure can be diagnosed. Use `--keep-diagnostics` to retain these files
 for valid trials too. No `scene.mjb` is written in any trial subfolder.
+The runner checks the simulator executable before starting and rejects an older
+binary that still writes per-trial snapshots. Rebuild `unitree_mujoco_velocity`
+in Ubuntu 22.04 after updating the source.
 
 With `--video`, each trial also contains `video.mp4`, `first_frame.png`, and
 `state.csv` (the 50 Hz pose trace for re-rendering). The run folder contains one
