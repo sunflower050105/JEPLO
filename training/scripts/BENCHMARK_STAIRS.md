@@ -25,8 +25,9 @@ but this benchmark calls the separate student inference policy for every trial.
 
 Each trial starts the robot 3.0 m before a straight ten-step course. Every
 rise is 0.20 m and every run is 0.30 m. The top landing is 1.20 m long and
-1.60 m wide. The robot and terrain receive fixed 0.4 static and dynamic
-friction in Isaac. The external command is `(0.5 or 0.7, 0, 0)`. As in the
+1.60 m wide. By default, the robot and terrain receive fixed 0.4 static and
+dynamic friction in Isaac; use `--friction` to select a different fixed value.
+The external command is `(0.5 or 0.7, 0, 0)` by default. As in the
 MuJoCo stair benchmark, an IMU-style yaw hold modifies the policy's `wz`
 request using `clamp(2 × heading_error − 0.25 × gyro_z, −1, 1)`; use
 `--no_yaw_hold` for an open-loop comparison. There is no simulator-pose
@@ -38,8 +39,8 @@ Success requires all four foot body origins inside and near the top landing,
 recent force-sensor contact for all feet, the base over the landing and at
 least 0.16 m above it, tilt at most 30 degrees, and a 0.2 s continuous hold.
 A fall (base below 0.16 m or tilt above 60 degrees for 0.2 s) and leaving the
-0.8 m half-width corridor take precedence. The deadline is 16 simulated
-seconds. This is labelled `stair_landing_isaac_contact_proxy_v1` because Isaac
+0.8 m half-width corridor take precedence. The default deadline is 16 simulated
+seconds; use `--duration` to change it. This is labelled `stair_landing_isaac_contact_proxy_v1` because Isaac
 reports foot contact forces without the landing-geom and contact-normal detail
 that the MuJoCo `stair_landing_v1` scorer uses. The landing footprint, height,
 posture, and hold thresholds match; the contact test is an approximation.
@@ -52,6 +53,38 @@ the completed trial rows. Results
 from this in-process Isaac student and the MuJoCo deployment student can help
 localize a gap, but they also differ in contact solver and depth/deployment
 path, so a rate difference alone does not prove one unique cause.
+
+## Matched-condition comparison with the MuJoCo r2 run
+
+The r2 training configuration already updates the Isaac LiDAR at 50 Hz,
+accumulates 10 raw scans into a depth image, and updates the depth image at
+10 Hz. Isaac samples its LiDAR rays in the sensor pattern; MuJoCo's
+`--downsample-rate 8` is a separate point-cloud reduction setting and has
+no direct Isaac benchmark flag.
+Training uses 1.0 as the base terrain and simulation material friction, but
+randomizes robot-body friction over 0.0–2.0 at startup. This benchmark fixes
+both terrain and robot-body friction to the requested value.
+
+For a fixed-friction 1.0, 0.8/1.0 m/s, 30-second clean-depth comparison,
+first run a short setup check and then the full benchmark in separate output
+directories:
+
+```bash
+cd /root/autodl-tmp/JEPLO-main/training
+VK_ICD_FILENAMES=/etc/vulkan/icd.d/nvidia_icd.json PYTHONUNBUFFERED=1 \
+  /root/autodl-tmp/env_jeplo/bin/python -u scripts/benchmark_stairs.py \
+  --headless --device cuda:0 --friction 1.0 --speeds 0.8 1.0 \
+  --duration 30 --seed 0 --repeats 1 --occlusion_patterns standard \
+  --output_dir outputs/stair_clean_friction1_smoke
+```
+
+For the full run, change `--repeats 1` to `--repeats 100` and use a new
+`--output_dir`. The `standard` condition disables training's random-shape
+and Perlin occlusion, retaining sensor noise and dropout. To compare that
+condition directly, rerun MuJoCo with `--occlusions standard`: the earlier
+MuJoCo run without `--occlusions` retained its regular cage mask. The two
+engines still have different scan generators, contact solvers, and success
+contact proxies; report those differences with the success rates.
 
 ## Depth occlusion conditions
 

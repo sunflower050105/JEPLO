@@ -25,6 +25,7 @@ parser.add_argument("--checkpoint", type=Path, default=Path("logs/rsl_rl/go2_loc
 parser.add_argument("--speeds", type=float, nargs="+", default=[0.5, 0.7])
 parser.add_argument("--repeats", type=int, default=100, help="Trials per speed")
 parser.add_argument("--duration", type=float, default=16.0, help="Maximum simulated seconds per trial")
+parser.add_argument("--friction", type=float, default=0.4, help="Fixed terrain and robot static/dynamic friction")
 parser.add_argument("--no_yaw_hold", action="store_true", help="Disable IMU-style stair heading correction")
 parser.add_argument("--seed", type=int, default=17)
 parser.add_argument("--output_dir", type=Path, default=None)
@@ -34,8 +35,12 @@ parser.add_argument(
 )
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
-if args.repeats < 1 or args.duration <= 0 or not args.speeds or any(speed <= 0 for speed in args.speeds):
+if args.repeats < 1 or not math.isfinite(args.duration) or args.duration <= 0 or not args.speeds or any(
+    not math.isfinite(speed) or speed <= 0 for speed in args.speeds
+):
     parser.error("repeats, duration, and every speed must be positive")
+if not math.isfinite(args.friction) or args.friction < 0:
+    parser.error("friction must be finite and nonnegative")
 if args.occlusion_patterns and len(set(args.occlusion_patterns)) != len(args.occlusion_patterns):
     parser.error("Each occlusion pattern may be listed only once")
 args.headless = True
@@ -154,7 +159,7 @@ class BenchmarkEnv(Go2LocoEnv):
     def _get_dones(self):
         # Score falls ourselves at 0.2 s, as in the MuJoCo benchmark. The base
         # task's earlier tilt termination would erase state before scoring.
-        # The runner also owns the 16 s time limit.
+        # The runner also owns the configured time limit.
         terminated = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         timed_out = torch.zeros_like(terminated)
         return terminated, timed_out
@@ -192,8 +197,8 @@ def configure_env():
     material = RigidBodyMaterialCfg(
         friction_combine_mode="average",
         restitution_combine_mode="average",
-        static_friction=0.4,
-        dynamic_friction=0.4,
+        static_friction=args.friction,
+        dynamic_friction=args.friction,
         restitution=0.0,
     )
     cfg.terrain.physics_material = material
@@ -203,8 +208,8 @@ def configure_env():
     cfg.events.randomize_com_positions = None
     cfg.events.randomize_push_robot = None
     cfg.events.randomize_rigid_body_material.params.update(
-        static_friction_range=(0.4, 0.4),
-        dynamic_friction_range=(0.4, 0.4),
+        static_friction_range=(args.friction, args.friction),
+        dynamic_friction_range=(args.friction, args.friction),
         restitution_range=(0.0, 0.0),
         num_buckets=1,
     )
@@ -306,7 +311,7 @@ def main():
         "stair_half_width_m": 0.8,
         "approach_length_m": 3.0,
         "imu_yaw_hold": not args.no_yaw_hold,
-        "terrain_and_robot_friction": 0.4,
+        "terrain_and_robot_friction": args.friction,
         "scoring_rule": LandingScorer.rule,
         "contact_note": "Isaac foot force plus landing footprint/height proxy; engine contacts are not identical to MuJoCo geom contacts.",
         "headless": True,
