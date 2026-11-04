@@ -1,0 +1,4 @@
+# CPU tools only; use the existing Isaac environment for Torch/Isaac execution.
+numpy>=1.24
+onnxruntime==1.22.0
+# The existing MuJoCo benchmark runner also requires its own requirements.txt.

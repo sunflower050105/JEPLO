@@ -1,0 +1,499 @@
+{
+  "checks": {
+    "angular_velocity": {
+      "actual_shape": [
+        60,
+        3
+      ],
+      "expected_shape": [
+        60,
+        3
+      ],
+      "passed": true,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "worst_index": [
+        0,
+        0
+      ],
+      "actual_at_worst": 0.032499998807907104,
+      "expected_at_worst": 0.032499998807907104,
+      "atol": 1e-06,
+      "rtol": 1e-06
+    },
+    "projected_gravity": {
+      "actual_shape": [
+        60,
+        3
+      ],
+      "expected_shape": [
+        60,
+        3
+      ],
+      "passed": true,
+      "max_abs": 1.1920928955078125e-07,
+      "mean_abs": 1.4570024278428819e-08,
+      "worst_index": [
+        24,
+        2
+      ],
+      "actual_at_worst": -1.0,
+      "expected_at_worst": -1.0000001192092896,
+      "atol": 1e-06,
+      "rtol": 1e-06
+    },
+    "command": {
+      "actual_shape": [
+        60,
+        3
+      ],
+      "expected_shape": [
+        60,
+        3
+      ],
+      "passed": true,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "worst_index": [
+        0,
+        0
+      ],
+      "actual_at_worst": 1.600000023841858,
+      "expected_at_worst": 1.600000023841858,
+      "atol": 1e-06,
+      "rtol": 1e-06
+    },
+    "joint_position": {
+      "actual_shape": [
+        60,
+        12
+      ],
+      "expected_shape": [
+        60,
+        12
+      ],
+      "passed": true,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "worst_index": [
+        0,
+        0
+      ],
+      "actual_at_worst": 0.006999999284744263,
+      "expected_at_worst": 0.006999999284744263,
+      "atol": 1e-06,
+      "rtol": 1e-06
+    },
+    "joint_velocity": {
+      "actual_shape": [
+        60,
+        12
+      ],
+      "expected_shape": [
+        60,
+        12
+      ],
+      "passed": true,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "worst_index": [
+        0,
+        0
+      ],
+      "actual_at_worst": -0.005499999970197678,
+      "expected_at_worst": -0.005499999970197678,
+      "atol": 1e-06,
+      "rtol": 1e-06
+    },
+    "previous_raw_action": {
+      "actual_shape": [
+        60,
+        12
+      ],
+      "expected_shape": [
+        60,
+        12
+      ],
+      "passed": true,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "worst_index": [
+        0,
+        0
+      ],
+      "actual_at_worst": -0.017000000923871994,
+      "expected_at_worst": -0.017000000923871994,
+      "atol": 1e-06,
+      "rtol": 1e-06
+    },
+    "proprio_history": {
+      "actual_shape": [
+        60,
+        450
+      ],
+      "expected_shape": [
+        60,
+        450
+      ],
+      "passed": true,
+      "max_abs": 1.1920928955078125e-07,
+      "mean_abs": 8.896545127586082e-10,
+      "worst_index": [
+        24,
+        5
+      ],
+      "actual_at_worst": -1.0,
+      "expected_at_worst": -1.0000001192092896,
+      "atol": 1e-06,
+      "rtol": 1e-06
+    },
+    "depth_history": {
+      "actual_shape": [
+        60,
+        2,
+        25,
+        60
+      ],
+      "expected_shape": [
+        60,
+        2,
+        25,
+        60
+      ],
+      "passed": false,
+      "max_abs": 0.020000003278255463,
+      "mean_abs": 0.013666666438803076,
+      "worst_index": [
+        41,
+        0,
+        0,
+        0
+      ],
+      "actual_at_worst": 0.09000000357627869,
+      "expected_at_worst": 0.07000000029802322,
+      "atol": 1e-06,
+      "rtol": 1e-06
+    }
+  },
+  "passed": false,
+  "input_reports": [
+    {
+      "side": "isaac",
+      "fixture_sha256": "93620c32a0ae8e45508e4d52f1ff80285ebb435adc20dbaab6c6245e02e91c56",
+      "sources": {
+        "training/go2_parkour/go2_parkour/tasks/go2_loco_env.py": "fa1016b990664b4a9b5d9c0ff8b102fd298604c5cd16170b9a129109d8b7adc4",
+        "training/go2_parkour/go2_parkour/tasks/go2_loco_env_cfg.py": "daef156f0a84e2ec9fc8fc67eee0de3dbf20f881ba05ed3fd50bdbecb382a505"
+      },
+      "checks": {
+        "angular_velocity": {
+          "actual_shape": [
+            60,
+            3
+          ],
+          "expected_shape": [
+            60,
+            3
+          ],
+          "passed": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "worst_index": [
+            0,
+            0
+          ],
+          "actual_at_worst": 0.032499998807907104,
+          "expected_at_worst": 0.032499998807907104,
+          "atol": 1e-06,
+          "rtol": 1e-06
+        },
+        "projected_gravity": {
+          "actual_shape": [
+            60,
+            3
+          ],
+          "expected_shape": [
+            60,
+            3
+          ],
+          "passed": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "worst_index": [
+            0,
+            0
+          ],
+          "actual_at_worst": 0.0,
+          "expected_at_worst": 0.0,
+          "atol": 1e-06,
+          "rtol": 1e-06
+        },
+        "command": {
+          "actual_shape": [
+            60,
+            3
+          ],
+          "expected_shape": [
+            60,
+            3
+          ],
+          "passed": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "worst_index": [
+            0,
+            0
+          ],
+          "actual_at_worst": 1.600000023841858,
+          "expected_at_worst": 1.600000023841858,
+          "atol": 1e-06,
+          "rtol": 1e-06
+        },
+        "joint_position": {
+          "actual_shape": [
+            60,
+            12
+          ],
+          "expected_shape": [
+            60,
+            12
+          ],
+          "passed": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "worst_index": [
+            0,
+            0
+          ],
+          "actual_at_worst": 0.006999999284744263,
+          "expected_at_worst": 0.006999999284744263,
+          "atol": 1e-06,
+          "rtol": 1e-06
+        },
+        "joint_velocity": {
+          "actual_shape": [
+            60,
+            12
+          ],
+          "expected_shape": [
+            60,
+            12
+          ],
+          "passed": true,
+          "max_abs": 7.450580596923828e-09,
+          "mean_abs": 5.503857715262307e-10,
+          "worst_index": [
+            2,
+            11
+          ],
+          "actual_at_worst": -0.0658000037074089,
+          "expected_at_worst": -0.06579999625682831,
+          "atol": 1e-06,
+          "rtol": 1e-06
+        },
+        "previous_raw_action": {
+          "actual_shape": [
+            60,
+            12
+          ],
+          "expected_shape": [
+            60,
+            12
+          ],
+          "passed": true,
+          "max_abs": 1.862645149230957e-09,
+          "mean_abs": 1.5870682545937598e-10,
+          "worst_index": [
+            1,
+            0
+          ],
+          "actual_at_worst": -0.01690000109374523,
+          "expected_at_worst": -0.016899999231100082,
+          "atol": 1e-06,
+          "rtol": 1e-06
+        },
+        "proprio_history_newest_first": {
+          "actual_shape": [
+            60,
+            450
+          ],
+          "expected_shape": [
+            60,
+            450
+          ],
+          "passed": true,
+          "max_abs": 7.450580596923828e-09,
+          "mean_abs": 1.7590921035864288e-10,
+          "worst_index": [
+            2,
+            32
+          ],
+          "actual_at_worst": -0.0658000037074089,
+          "expected_at_worst": -0.06579999625682831,
+          "atol": 1e-06,
+          "rtol": 1e-06
+        }
+      },
+      "passed": true,
+      "scope": "Packing on injected state; engine sensor frames/order still require live verification."
+    },
+    {
+      "side": "mujoco",
+      "fixture_sha256": "93620c32a0ae8e45508e4d52f1ff80285ebb435adc20dbaab6c6245e02e91c56",
+      "sources": {
+        "deployment/go2_deploy/deploy/src/deploy.cpp": "b1781cee66ebe04fc6a3f9aca9f08c20479bab3eaee5452e319d84fb599efed2"
+      },
+      "checks": {
+        "angular_velocity": {
+          "actual_shape": [
+            60,
+            3
+          ],
+          "expected_shape": [
+            60,
+            3
+          ],
+          "passed": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "worst_index": [
+            0,
+            0
+          ],
+          "actual_at_worst": 0.032499998807907104,
+          "expected_at_worst": 0.032499998807907104,
+          "atol": 1e-06,
+          "rtol": 1e-06
+        },
+        "projected_gravity": {
+          "actual_shape": [
+            60,
+            3
+          ],
+          "expected_shape": [
+            60,
+            3
+          ],
+          "passed": true,
+          "max_abs": 1.1920928955078125e-07,
+          "mean_abs": 1.4570024278428819e-08,
+          "worst_index": [
+            24,
+            2
+          ],
+          "actual_at_worst": -1.0,
+          "expected_at_worst": -1.0000001192092896,
+          "atol": 1e-06,
+          "rtol": 1e-06
+        },
+        "command": {
+          "actual_shape": [
+            60,
+            3
+          ],
+          "expected_shape": [
+            60,
+            3
+          ],
+          "passed": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "worst_index": [
+            0,
+            0
+          ],
+          "actual_at_worst": 1.600000023841858,
+          "expected_at_worst": 1.600000023841858,
+          "atol": 1e-06,
+          "rtol": 1e-06
+        },
+        "joint_position": {
+          "actual_shape": [
+            60,
+            12
+          ],
+          "expected_shape": [
+            60,
+            12
+          ],
+          "passed": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "worst_index": [
+            0,
+            0
+          ],
+          "actual_at_worst": 0.006999999284744263,
+          "expected_at_worst": 0.006999999284744263,
+          "atol": 1e-06,
+          "rtol": 1e-06
+        },
+        "joint_velocity": {
+          "actual_shape": [
+            60,
+            12
+          ],
+          "expected_shape": [
+            60,
+            12
+          ],
+          "passed": true,
+          "max_abs": 7.450580596923828e-09,
+          "mean_abs": 5.503857715262307e-10,
+          "worst_index": [
+            2,
+            11
+          ],
+          "actual_at_worst": -0.0658000037074089,
+          "expected_at_worst": -0.06579999625682831,
+          "atol": 1e-06,
+          "rtol": 1e-06
+        },
+        "previous_raw_action": {
+          "actual_shape": [
+            60,
+            12
+          ],
+          "expected_shape": [
+            60,
+            12
+          ],
+          "passed": true,
+          "max_abs": 1.862645149230957e-09,
+          "mean_abs": 1.5870682545937598e-10,
+          "worst_index": [
+            1,
+            0
+          ],
+          "actual_at_worst": -0.01690000109374523,
+          "expected_at_worst": -0.016899999231100082,
+          "atol": 1e-06,
+          "rtol": 1e-06
+        },
+        "proprio_history_newest_first": {
+          "actual_shape": [
+            60,
+            450
+          ],
+          "expected_shape": [
+            60,
+            450
+          ],
+          "passed": true,
+          "max_abs": 1.1920928955078125e-07,
+          "mean_abs": 1.065563723117251e-09,
+          "worst_index": [
+            24,
+            5
+          ],
+          "actual_at_worst": -1.0,
+          "expected_at_worst": -1.0000001192092896,
+          "atol": 1e-06,
+          "rtol": 1e-06
+        }
+      },
+      "passed": true,
+      "scope": "Packing on injected state; engine sensor frames/order still require live verification."
+    }
+  ],
+  "note": "Zero frame ID is initial padding. Synthetic completed frames arrive every five control ticks."
+}
