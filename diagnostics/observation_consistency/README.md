@@ -78,6 +78,29 @@ that **new directory** to the remote repository before remote use. The examples
 assume the remote repository is `/root/autodl-tmp/JEPLO-main`. No remote upload is
 performed by these scripts.
 
+### Verified AutoDL environment (2026-11-05)
+
+The existing `/root/autodl-tmp/env_jeplo` environment was checked after repair:
+Python 3.11.16, NumPy 1.26.0, Torch 2.7.0+cu128, Isaac Sim 5.1.0.0, and
+Isaac Lab 2.3.2.post1. Preserve Isaac's `packaging==23.0` requirement.
+
+Only three package versions changed to resolve dependency conflicts:
+
+| Package | Previous | Verified |
+|---|---|---|
+| click | 8.5.0 | 8.1.7 |
+| wheel | 0.47.0 | 0.45.1 |
+| wandb | 0.30.0 | 0.26.0 |
+
+`pip check`, imports of `isaaclab.app.AppLauncher` and the r2 CTS runner, and a
+small CUDA computation passed. All 885 checked Python standard-library source
+files matched their recorded checksums. This does not certify a full simulator
+launch or rollout. The original package files and before/after version records
+are backed up remotely at `/root/autodl-tmp/env-repair-backups/20261105-030738/`.
+Installing packages changes the remote environment; Git commits and code sync
+do not reproduce those installations automatically. ONNX Runtime remains absent
+from this environment: run Check 2 in the separate local analysis environment.
+
 ## Check 1A: order, scaling, gravity formula and history
 
 On AutoDL, from the remote repository root:
