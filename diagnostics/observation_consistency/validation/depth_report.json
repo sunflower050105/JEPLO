@@ -1,0 +1,130 @@
+{
+  "checks": {
+    "clean": {
+      "actual_shape": [
+        10,
+        25,
+        60
+      ],
+      "expected_shape": [
+        10,
+        25,
+        60
+      ],
+      "passed": true,
+      "max_abs": 5.364418029785156e-07,
+      "mean_abs": 1.2333889802296957e-07,
+      "worst_index": [
+        0,
+        1,
+        8
+      ],
+      "actual_at_worst": 0.3062499761581421,
+      "expected_at_worst": 0.30625051259994507,
+      "atol": 1e-06,
+      "rtol": 1e-06
+    },
+    "clean_min": {
+      "actual_shape": [
+        25,
+        60
+      ],
+      "expected_shape": [
+        25,
+        60
+      ],
+      "passed": true,
+      "max_abs": 5.364418029785156e-07,
+      "mean_abs": 1.2369950612386069e-07,
+      "worst_index": [
+        12,
+        4
+      ],
+      "actual_at_worst": 0.36249998211860657,
+      "expected_at_worst": 0.36250051856040955,
+      "atol": 1e-06,
+      "rtol": 1e-06
+    },
+    "edge": {
+      "actual_shape": [
+        8,
+        25,
+        60
+      ],
+      "expected_shape": [
+        8,
+        25,
+        60
+      ],
+      "passed": false,
+      "max_abs": 0.949999500066042,
+      "mean_abs": 7.91667460774382e-05,
+      "worst_index": [
+        1,
+        2,
+        30
+      ],
+      "actual_at_worst": 1.0,
+      "expected_at_worst": 0.050000499933958054,
+      "atol": 1e-06,
+      "rtol": 1e-06
+    },
+    "edge_min": {
+      "actual_shape": [
+        25,
+        60
+      ],
+      "expected_shape": [
+        25,
+        60
+      ],
+      "passed": false,
+      "max_abs": 0.949999500066042,
+      "mean_abs": 0.0006333339686195056,
+      "worst_index": [
+        2,
+        30
+      ],
+      "actual_at_worst": 1.0,
+      "expected_at_worst": 0.050000499933958054,
+      "atol": 1e-06,
+      "rtol": 1e-06
+    }
+  },
+  "passed": false,
+  "input_metadata": [
+    {
+      "side": "isaac",
+      "downsample_rate": 8,
+      "fixture_hash": "5f54c077304e06d198440a4ef351a6952258b267645aec36b76cd90d1b740396",
+      "source_sha256": "64d39ec12c6980ec496a82ccd97fedd11a41bc056d64bee98afcb94c3d7dc07b",
+      "grid": [
+        25,
+        60
+      ],
+      "range_m": 2,
+      "noise": false,
+      "dropout": false,
+      "masks": false,
+      "sensor_frame": "identity",
+      "scope": "Shared input cloud: projection, filtering, normalization and temporal minimum only"
+    },
+    {
+      "side": "mujoco",
+      "downsample_rate": 8,
+      "fixture_hash": "5f54c077304e06d198440a4ef351a6952258b267645aec36b76cd90d1b740396",
+      "source_sha256": "ba2477c233767526e00d1011ae0da1a9659fdd72f70f6d1a4380ec0f006cb293",
+      "grid": [
+        25,
+        60
+      ],
+      "range_m": 2,
+      "noise": false,
+      "dropout": false,
+      "masks": false,
+      "sensor_frame": "identity",
+      "scope": "Shared input cloud: projection, filtering, normalization and temporal minimum only"
+    }
+  ],
+  "note": "Edge differences expose range/bin rules; they do not quantify the effect on policy success."
+}

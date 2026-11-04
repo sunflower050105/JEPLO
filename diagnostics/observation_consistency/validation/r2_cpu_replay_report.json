@@ -1,0 +1,1247 @@
+{
+  "passed": false,
+  "counts": {
+    "policy": 10,
+    "sensor_estimator": 10
+  },
+  "comparisons": [
+    {
+      "model": "policy",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000000.npz",
+      "tensor": "actions",
+      "actual_shape": [
+        1,
+        12
+      ],
+      "expected_shape": [
+        1,
+        12
+      ],
+      "passed": false,
+      "max_abs": 0.003272145986557007,
+      "mean_abs": 0.0010317328075567882,
+      "worst_index": [
+        0,
+        10
+      ],
+      "actual_at_worst": 0.25286585092544556,
+      "expected_at_worst": 0.25613799691200256,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "policy",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000001.npz",
+      "tensor": "actions",
+      "actual_shape": [
+        1,
+        12
+      ],
+      "expected_shape": [
+        1,
+        12
+      ],
+      "passed": false,
+      "max_abs": 0.005254983901977539,
+      "mean_abs": 0.0018249725302060444,
+      "worst_index": [
+        0,
+        5
+      ],
+      "actual_at_worst": 1.0630282163619995,
+      "expected_at_worst": 1.057773232460022,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "policy",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000002.npz",
+      "tensor": "actions",
+      "actual_shape": [
+        1,
+        12
+      ],
+      "expected_shape": [
+        1,
+        12
+      ],
+      "passed": false,
+      "max_abs": 0.0013120770454406738,
+      "mean_abs": 0.000461411972840627,
+      "worst_index": [
+        0,
+        8
+      ],
+      "actual_at_worst": 0.2546699643135071,
+      "expected_at_worst": 0.2533578872680664,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "policy",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000003.npz",
+      "tensor": "actions",
+      "actual_shape": [
+        1,
+        12
+      ],
+      "expected_shape": [
+        1,
+        12
+      ],
+      "passed": false,
+      "max_abs": 0.0016525983810424805,
+      "mean_abs": 0.0005219414209326109,
+      "worst_index": [
+        0,
+        5
+      ],
+      "actual_at_worst": -0.0975656509399414,
+      "expected_at_worst": -0.09921824932098389,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "policy",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000004.npz",
+      "tensor": "actions",
+      "actual_shape": [
+        1,
+        12
+      ],
+      "expected_shape": [
+        1,
+        12
+      ],
+      "passed": false,
+      "max_abs": 0.0013651847839355469,
+      "mean_abs": 0.0007609811921914419,
+      "worst_index": [
+        0,
+        9
+      ],
+      "actual_at_worst": 0.5792410969734192,
+      "expected_at_worst": 0.5778759121894836,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "policy",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000005.npz",
+      "tensor": "actions",
+      "actual_shape": [
+        1,
+        12
+      ],
+      "expected_shape": [
+        1,
+        12
+      ],
+      "passed": false,
+      "max_abs": 0.002448171377182007,
+      "mean_abs": 0.0011043908695379894,
+      "worst_index": [
+        0,
+        10
+      ],
+      "actual_at_worst": -0.3395351767539978,
+      "expected_at_worst": -0.3419833481311798,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "policy",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000006.npz",
+      "tensor": "actions",
+      "actual_shape": [
+        1,
+        12
+      ],
+      "expected_shape": [
+        1,
+        12
+      ],
+      "passed": false,
+      "max_abs": 0.0025742053985595703,
+      "mean_abs": 0.001034696896870931,
+      "worst_index": [
+        0,
+        10
+      ],
+      "actual_at_worst": 1.917168140411377,
+      "expected_at_worst": 1.9197423458099365,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "policy",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000007.npz",
+      "tensor": "actions",
+      "actual_shape": [
+        1,
+        12
+      ],
+      "expected_shape": [
+        1,
+        12
+      ],
+      "passed": false,
+      "max_abs": 0.0023075640201568604,
+      "mean_abs": 0.000844308485587438,
+      "worst_index": [
+        0,
+        11
+      ],
+      "actual_at_worst": 0.2866697609424591,
+      "expected_at_worst": 0.28436219692230225,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "policy",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000008.npz",
+      "tensor": "actions",
+      "actual_shape": [
+        1,
+        12
+      ],
+      "expected_shape": [
+        1,
+        12
+      ],
+      "passed": false,
+      "max_abs": 0.001342475414276123,
+      "mean_abs": 0.0007107233007748922,
+      "worst_index": [
+        0,
+        6
+      ],
+      "actual_at_worst": 0.8495780825614929,
+      "expected_at_worst": 0.850920557975769,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "policy",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000009.npz",
+      "tensor": "actions",
+      "actual_shape": [
+        1,
+        12
+      ],
+      "expected_shape": [
+        1,
+        12
+      ],
+      "passed": false,
+      "max_abs": 0.00438535213470459,
+      "mean_abs": 0.0012484615047772725,
+      "worst_index": [
+        0,
+        11
+      ],
+      "actual_at_worst": 0.6739712357521057,
+      "expected_at_worst": 0.6695858836174011,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000000.npz",
+      "tensor": "feature",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.0017657428979873657,
+      "mean_abs": 0.00013992438822540976,
+      "worst_index": [
+        0,
+        405
+      ],
+      "actual_at_worst": 0.1403859257698059,
+      "expected_at_worst": 0.13862018287181854,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000000.npz",
+      "tensor": "hidden_out",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.0017657428979873657,
+      "mean_abs": 0.00013992438822540976,
+      "worst_index": [
+        0,
+        405
+      ],
+      "actual_at_worst": 0.1403859257698059,
+      "expected_at_worst": 0.13862018287181854,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000000.npz",
+      "tensor": "depth_latent",
+      "actual_shape": [
+        1,
+        64
+      ],
+      "expected_shape": [
+        1,
+        64
+      ],
+      "passed": false,
+      "max_abs": 0.0009615421295166016,
+      "mean_abs": 0.00028382552409311756,
+      "worst_index": [
+        0,
+        5
+      ],
+      "actual_at_worst": -1.457764744758606,
+      "expected_at_worst": -1.4568032026290894,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000000.npz",
+      "tensor": "prop_hist_latent",
+      "actual_shape": [
+        1,
+        32
+      ],
+      "expected_shape": [
+        1,
+        32
+      ],
+      "passed": false,
+      "max_abs": 0.0012927055358886719,
+      "mean_abs": 0.00031609460711479187,
+      "worst_index": [
+        0,
+        19
+      ],
+      "actual_at_worst": -1.4763776063919067,
+      "expected_at_worst": -1.475084900856018,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000001.npz",
+      "tensor": "feature",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.001174837350845337,
+      "mean_abs": 0.00013865315236216702,
+      "worst_index": [
+        0,
+        423
+      ],
+      "actual_at_worst": -0.15623804926872253,
+      "expected_at_worst": -0.1550632119178772,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000001.npz",
+      "tensor": "hidden_out",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.001174837350845337,
+      "mean_abs": 0.00013865315236216702,
+      "worst_index": [
+        0,
+        423
+      ],
+      "actual_at_worst": -0.15623804926872253,
+      "expected_at_worst": -0.1550632119178772,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000001.npz",
+      "tensor": "depth_latent",
+      "actual_shape": [
+        1,
+        64
+      ],
+      "expected_shape": [
+        1,
+        64
+      ],
+      "passed": false,
+      "max_abs": 0.0013459622859954834,
+      "mean_abs": 0.000362983912054915,
+      "worst_index": [
+        0,
+        51
+      ],
+      "actual_at_worst": -0.16686081886291504,
+      "expected_at_worst": -0.16551485657691956,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000001.npz",
+      "tensor": "prop_hist_latent",
+      "actual_shape": [
+        1,
+        32
+      ],
+      "expected_shape": [
+        1,
+        32
+      ],
+      "passed": false,
+      "max_abs": 0.0008562803268432617,
+      "mean_abs": 0.00025776265101740137,
+      "worst_index": [
+        0,
+        12
+      ],
+      "actual_at_worst": -0.645244300365448,
+      "expected_at_worst": -0.6443880200386047,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000002.npz",
+      "tensor": "feature",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.001181717962026596,
+      "mean_abs": 0.00014952782271393517,
+      "worst_index": [
+        0,
+        381
+      ],
+      "actual_at_worst": -0.04015204310417175,
+      "expected_at_worst": -0.03897032514214516,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000002.npz",
+      "tensor": "hidden_out",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.001181717962026596,
+      "mean_abs": 0.00014952782271393517,
+      "worst_index": [
+        0,
+        381
+      ],
+      "actual_at_worst": -0.04015204310417175,
+      "expected_at_worst": -0.03897032514214516,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000002.npz",
+      "tensor": "depth_latent",
+      "actual_shape": [
+        1,
+        64
+      ],
+      "expected_shape": [
+        1,
+        64
+      ],
+      "passed": false,
+      "max_abs": 0.0009596347808837891,
+      "mean_abs": 0.00029551880834333133,
+      "worst_index": [
+        0,
+        16
+      ],
+      "actual_at_worst": 0.6224414110183716,
+      "expected_at_worst": 0.6214817762374878,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000002.npz",
+      "tensor": "prop_hist_latent",
+      "actual_shape": [
+        1,
+        32
+      ],
+      "expected_shape": [
+        1,
+        32
+      ],
+      "passed": false,
+      "max_abs": 0.0006225407123565674,
+      "mean_abs": 0.0002586241389508359,
+      "worst_index": [
+        0,
+        9
+      ],
+      "actual_at_worst": 0.32905343174934387,
+      "expected_at_worst": 0.32967597246170044,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000003.npz",
+      "tensor": "feature",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.0014886632561683655,
+      "mean_abs": 0.00016026734283514088,
+      "worst_index": [
+        0,
+        400
+      ],
+      "actual_at_worst": -0.07208266109228134,
+      "expected_at_worst": -0.07059399783611298,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000003.npz",
+      "tensor": "hidden_out",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.0014886632561683655,
+      "mean_abs": 0.00016026734283514088,
+      "worst_index": [
+        0,
+        400
+      ],
+      "actual_at_worst": -0.07208266109228134,
+      "expected_at_worst": -0.07059399783611298,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000003.npz",
+      "tensor": "depth_latent",
+      "actual_shape": [
+        1,
+        64
+      ],
+      "expected_shape": [
+        1,
+        64
+      ],
+      "passed": false,
+      "max_abs": 0.0008193254470825195,
+      "mean_abs": 0.00026569280453259125,
+      "worst_index": [
+        0,
+        59
+      ],
+      "actual_at_worst": -1.0490697622299194,
+      "expected_at_worst": -1.048250436782837,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000003.npz",
+      "tensor": "prop_hist_latent",
+      "actual_shape": [
+        1,
+        32
+      ],
+      "expected_shape": [
+        1,
+        32
+      ],
+      "passed": false,
+      "max_abs": 0.0011909008026123047,
+      "mean_abs": 0.0003571367124095559,
+      "worst_index": [
+        0,
+        8
+      ],
+      "actual_at_worst": -1.5158623456954956,
+      "expected_at_worst": -1.5146714448928833,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000004.npz",
+      "tensor": "feature",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.003035902976989746,
+      "mean_abs": 0.00021860218555502797,
+      "worst_index": [
+        0,
+        470
+      ],
+      "actual_at_worst": 0.5792554616928101,
+      "expected_at_worst": 0.5762195587158203,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000004.npz",
+      "tensor": "hidden_out",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.003035902976989746,
+      "mean_abs": 0.00021860218555502797,
+      "worst_index": [
+        0,
+        470
+      ],
+      "actual_at_worst": 0.5792554616928101,
+      "expected_at_worst": 0.5762195587158203,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000004.npz",
+      "tensor": "depth_latent",
+      "actual_shape": [
+        1,
+        64
+      ],
+      "expected_shape": [
+        1,
+        64
+      ],
+      "passed": false,
+      "max_abs": 0.0010765790939331055,
+      "mean_abs": 0.0003153193392790854,
+      "worst_index": [
+        0,
+        43
+      ],
+      "actual_at_worst": -1.5621700286865234,
+      "expected_at_worst": -1.5610934495925903,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000004.npz",
+      "tensor": "prop_hist_latent",
+      "actual_shape": [
+        1,
+        32
+      ],
+      "expected_shape": [
+        1,
+        32
+      ],
+      "passed": false,
+      "max_abs": 0.0008962154388427734,
+      "mean_abs": 0.00031990534625947475,
+      "worst_index": [
+        0,
+        11
+      ],
+      "actual_at_worst": -2.2254934310913086,
+      "expected_at_worst": -2.224597215652466,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000005.npz",
+      "tensor": "feature",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.002121097408235073,
+      "mean_abs": 0.00018714892212301493,
+      "worst_index": [
+        0,
+        374
+      ],
+      "actual_at_worst": 0.011624160222709179,
+      "expected_at_worst": 0.013745257630944252,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000005.npz",
+      "tensor": "hidden_out",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.002121097408235073,
+      "mean_abs": 0.00018714892212301493,
+      "worst_index": [
+        0,
+        374
+      ],
+      "actual_at_worst": 0.011624160222709179,
+      "expected_at_worst": 0.013745257630944252,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000005.npz",
+      "tensor": "depth_latent",
+      "actual_shape": [
+        1,
+        64
+      ],
+      "expected_shape": [
+        1,
+        64
+      ],
+      "passed": false,
+      "max_abs": 0.001108795404434204,
+      "mean_abs": 0.0003772940835915506,
+      "worst_index": [
+        0,
+        44
+      ],
+      "actual_at_worst": 0.32019177079200745,
+      "expected_at_worst": 0.32130056619644165,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000005.npz",
+      "tensor": "prop_hist_latent",
+      "actual_shape": [
+        1,
+        32
+      ],
+      "expected_shape": [
+        1,
+        32
+      ],
+      "passed": false,
+      "max_abs": 0.0008043646812438965,
+      "mean_abs": 0.0003187074908055365,
+      "worst_index": [
+        0,
+        29
+      ],
+      "actual_at_worst": -0.9727734327316284,
+      "expected_at_worst": -0.9719690680503845,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000006.npz",
+      "tensor": "feature",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.001957625150680542,
+      "mean_abs": 0.0002015657867104892,
+      "worst_index": [
+        0,
+        338
+      ],
+      "actual_at_worst": -0.3683670163154602,
+      "expected_at_worst": -0.36640939116477966,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000006.npz",
+      "tensor": "hidden_out",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.001957625150680542,
+      "mean_abs": 0.0002015657867104892,
+      "worst_index": [
+        0,
+        338
+      ],
+      "actual_at_worst": -0.3683670163154602,
+      "expected_at_worst": -0.36640939116477966,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000006.npz",
+      "tensor": "depth_latent",
+      "actual_shape": [
+        1,
+        64
+      ],
+      "expected_shape": [
+        1,
+        64
+      ],
+      "passed": false,
+      "max_abs": 0.0011636614799499512,
+      "mean_abs": 0.0003345454460941255,
+      "worst_index": [
+        0,
+        52
+      ],
+      "actual_at_worst": 0.3813629150390625,
+      "expected_at_worst": 0.38252657651901245,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000006.npz",
+      "tensor": "prop_hist_latent",
+      "actual_shape": [
+        1,
+        32
+      ],
+      "expected_shape": [
+        1,
+        32
+      ],
+      "passed": false,
+      "max_abs": 0.000735163688659668,
+      "mean_abs": 0.0002260725013911724,
+      "worst_index": [
+        0,
+        17
+      ],
+      "actual_at_worst": -1.4451478719711304,
+      "expected_at_worst": -1.4444127082824707,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000007.npz",
+      "tensor": "feature",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.0015715882182121277,
+      "mean_abs": 0.00018085278315993492,
+      "worst_index": [
+        0,
+        316
+      ],
+      "actual_at_worst": -0.09887135773897171,
+      "expected_at_worst": -0.10044294595718384,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000007.npz",
+      "tensor": "hidden_out",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.0015715882182121277,
+      "mean_abs": 0.00018085278315993492,
+      "worst_index": [
+        0,
+        316
+      ],
+      "actual_at_worst": -0.09887135773897171,
+      "expected_at_worst": -0.10044294595718384,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000007.npz",
+      "tensor": "depth_latent",
+      "actual_shape": [
+        1,
+        64
+      ],
+      "expected_shape": [
+        1,
+        64
+      ],
+      "passed": false,
+      "max_abs": 0.0012888908386230469,
+      "mean_abs": 0.00030868148314766586,
+      "worst_index": [
+        0,
+        8
+      ],
+      "actual_at_worst": 1.4257694482803345,
+      "expected_at_worst": 1.4270583391189575,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000007.npz",
+      "tensor": "prop_hist_latent",
+      "actual_shape": [
+        1,
+        32
+      ],
+      "expected_shape": [
+        1,
+        32
+      ],
+      "passed": false,
+      "max_abs": 0.001070261001586914,
+      "mean_abs": 0.00046020408626645803,
+      "worst_index": [
+        0,
+        18
+      ],
+      "actual_at_worst": 1.0153673887252808,
+      "expected_at_worst": 1.0164376497268677,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000008.npz",
+      "tensor": "feature",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.0018153786659240723,
+      "mean_abs": 0.00018376992852608964,
+      "worst_index": [
+        0,
+        225
+      ],
+      "actual_at_worst": -0.4082287549972534,
+      "expected_at_worst": -0.4100441336631775,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000008.npz",
+      "tensor": "hidden_out",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.0018153786659240723,
+      "mean_abs": 0.00018376992852608964,
+      "worst_index": [
+        0,
+        225
+      ],
+      "actual_at_worst": -0.4082287549972534,
+      "expected_at_worst": -0.4100441336631775,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000008.npz",
+      "tensor": "depth_latent",
+      "actual_shape": [
+        1,
+        64
+      ],
+      "expected_shape": [
+        1,
+        64
+      ],
+      "passed": false,
+      "max_abs": 0.0009782463312149048,
+      "mean_abs": 0.00027434868388809264,
+      "worst_index": [
+        0,
+        43
+      ],
+      "actual_at_worst": -0.12139704823493958,
+      "expected_at_worst": -0.12041880190372467,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000008.npz",
+      "tensor": "prop_hist_latent",
+      "actual_shape": [
+        1,
+        32
+      ],
+      "expected_shape": [
+        1,
+        32
+      ],
+      "passed": false,
+      "max_abs": 0.0007482767105102539,
+      "mean_abs": 0.00027017691172659397,
+      "worst_index": [
+        0,
+        17
+      ],
+      "actual_at_worst": 0.6631452441215515,
+      "expected_at_worst": 0.6638935208320618,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000009.npz",
+      "tensor": "feature",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.0026278868317604065,
+      "mean_abs": 0.0002112851564106677,
+      "worst_index": [
+        0,
+        159
+      ],
+      "actual_at_worst": 0.07050370424985886,
+      "expected_at_worst": 0.06787581741809845,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000009.npz",
+      "tensor": "hidden_out",
+      "actual_shape": [
+        1,
+        512
+      ],
+      "expected_shape": [
+        1,
+        512
+      ],
+      "passed": false,
+      "max_abs": 0.0026278868317604065,
+      "mean_abs": 0.0002112851564106677,
+      "worst_index": [
+        0,
+        159
+      ],
+      "actual_at_worst": 0.07050370424985886,
+      "expected_at_worst": 0.06787581741809845,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000009.npz",
+      "tensor": "depth_latent",
+      "actual_shape": [
+        1,
+        64
+      ],
+      "expected_shape": [
+        1,
+        64
+      ],
+      "passed": false,
+      "max_abs": 0.0011141300201416016,
+      "mean_abs": 0.0003941992617910728,
+      "worst_index": [
+        0,
+        23
+      ],
+      "actual_at_worst": 2.0889649391174316,
+      "expected_at_worst": 2.08785080909729,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    },
+    {
+      "model": "sensor_estimator",
+      "sample": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000009.npz",
+      "tensor": "prop_hist_latent",
+      "actual_shape": [
+        1,
+        32
+      ],
+      "expected_shape": [
+        1,
+        32
+      ],
+      "passed": false,
+      "max_abs": 0.0006917938590049744,
+      "mean_abs": 0.0002118847332894802,
+      "worst_index": [
+        0,
+        18
+      ],
+      "actual_at_worst": 0.09133980423212051,
+      "expected_at_worst": 0.09064801037311554,
+      "atol": 0.0001,
+      "rtol": 0.0001
+    }
+  ],
+  "onnxruntime_version": "1.22.0",
+  "requested_provider": "CPUExecutionProvider",
+  "session_providers": {
+    "policy": [
+      "CPUExecutionProvider"
+    ],
+    "sensor_estimator": [
+      "CPUExecutionProvider"
+    ]
+  },
+  "model_hashes": {
+    "policy.onnx": "826008c52264aaf88e625970e8cac51ef19ed1d29e83cb4f91cf925efcec1704",
+    "sensor_estimator.onnx": "557bd163e58e527b6376715407475227c61dc5d59deffd657861715e5eed5b82"
+  },
+  "input_source": "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases",
+  "reference_hashes": {
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000000.npz": "c5fe872077751f8b1ea9988b26fdeeaa3edfe6a366d5303547c9ce31f76d53ed",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000001.npz": "a9746c200763ef98129b7e2704ad63a8c041c545b478b76e67bfe2fa91edc454",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000002.npz": "5efa7023e6b72a88e1d4139ad117a369abe4d968bed754f1cb364caf3dc67ebe",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000003.npz": "3fe3a56a99da69f81afb563bb33c2ec81a83d3ee6de5942858665e4d78f376a9",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000004.npz": "c711f1be6f245250c380b5d287f4a521e156ae8dfb180d23c22b1d5719beb790",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000005.npz": "f766d89c7d92d2fd7f5bfc243df57f297ad0dea920f4d42bfc79fbbb27465c08",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000006.npz": "80322a4e77147125eac4aec30db310130e347776a217623c324ee8ebd2d6cb9f",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000007.npz": "ac12cea1c91ccc7cb2d3e6143f053c76012bde92a0e3e5ee357435d90b76c65b",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000008.npz": "92d3826bb3ef7dcd1c2a0abb6e647998837e0aa7d4054db9f174f8f726724532",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/policy/sample_000009.npz": "6573adb6b9d3fc641dfe30f906ae3b65876d763dddd7c4991a51fba260e024f6",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000000.npz": "5031a52221ac07b372d459d082499f464a2388dc96ae18fd748cdaed50236be9",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000001.npz": "1dff818aaf52c07d069e137acc8c38ad705e681ca3e058c5aa2361dea4c6774b",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000002.npz": "946d39a818cfe067ee4407027b9a0a8af168db32d9a3ccf10418906cc70f4c33",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000003.npz": "4d3b939af296668ea8c00efb25f97ff8eb9d1d825601aa2977db22270a58f686",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000004.npz": "c1748ec7c8e422959364414aebfeb456bf8932604661b48fc33d4c36bc9c5ba1",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000005.npz": "eb2ab30716999ca839fcbc1d4b2c785f9d451882f195acda8579f0ea8a859eca",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000006.npz": "06e34f1bdb9234d074904a849986f73962338f3a701221b893f8fa184f8795cf",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000007.npz": "5245ced5bf80382e1699e788050f262d020bd912cd149e5b56919252130bd04a",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000008.npz": "c5fb6709958a5804875188f4b4512116d8a47ec63193e2e3c5740eb3c36462f4",
+    "/home/lin/Jeplo/JEPLO-main/deployment/go2_deploy/model/my_policy_r2/test_cases/sensor_estimator/sample_000009.npz": "0a9ddae88998176db8e78deaf4502859e51112ff7372c3804e576d17995e19da"
+  },
+  "scope": "Identical-input one-step parity; provider fallback may execute unsupported operators."
+}
