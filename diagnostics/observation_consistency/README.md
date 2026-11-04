@@ -9,6 +9,59 @@ These tools answer three different questions, in this order:
 Run and review each check before interpreting the next. A mismatch is a useful result;
 the scripts do not change the policy or automatically repair a mismatch.
 
+## One command per machine: unattended sequence
+
+Both machines can run independently at the same time. Within each machine, stages
+run sequentially. AutoDL runs Check 1A, Check 1B, live Isaac capture, then trace
+analysis. The local machine runs Check 1A, Check 1B, Check 2 replay, builds the
+separate controller, runs live MuJoCo capture, then analyzes its traces. Check 2
+uses the local ONNX environment; it is not duplicated in the Isaac environment.
+
+In your AutoDL SSH terminal:
+
+```bash
+/root/autodl-tmp/env_jeplo/bin/python -u \
+  /root/autodl-tmp/JEPLO-main/diagnostics/observation_consistency/run_all.py \
+  --side isaac
+```
+
+From your local host terminal, this command enters the existing build container:
+
+```bash
+distrobox enter ubuntu-22-04 -- env \
+  LD_LIBRARY_PATH=/home/lin/ubuntu_22_04/onnxruntime-linux-x64-gpu-1.22.0/lib:/home/lin/ubuntu_22_04/TensorRT-10.9.0.34/targets/x86_64-linux-gnu/lib \
+  /run/host/home/lin/Jeplo/JEPLO-main/deployment/evaluation/velocity_benchmark/.venv/bin/python -u \
+  /run/host/home/lin/Jeplo/JEPLO-main/diagnostics/observation_consistency/run_all.py \
+  --side mujoco --setup-replay
+```
+
+`--setup-replay` creates a fresh venv inside the batch output and installs only
+the CPU analysis requirements there. It does not modify the benchmark Python or
+the remote environment. Alternatively, use `--replay-python PATH_TO_PYTHON` to
+reuse an existing analysis environment. A fresh private controller is built by
+default; `--audit-build PATH` reuses a prior diagnostic build.
+
+Defaults: r2, speeds 0.8 and 1.0 m/s, one trial per speed, 30 seconds per trial,
+friction 1.0, seed 0, standard/no occlusion. MuJoCo uses 50 Hz, ten accumulated
+scans, and stride eight; Isaac retains its current training configuration.
+Set `--repeats N`, `--duration SECONDS`, or `--speeds ...` on both commands if
+needed. Leave other MuJoCo controllers stopped and keep the PC awake. These
+commands run in the foreground: keep the terminals and SSH session open.
+
+Each invocation prints a new `runs/SIDE-batch-TIMESTAMP/` directory containing
+`contract/`, `depth/`, `live/`, `analysis/`, local `replay/` and `controller/`,
+numbered stage logs, and `summary.json`. Long stages write their progress to the
+printed log path. A numerical mismatch with a completed report is recorded and
+the next stage runs. An execution/setup failure stops the batch and preserves
+the logs. Final exit status: 0 completed; 1 completed with measured mismatches;
+2 execution error/interruption. There is no overall sim-to-sim verdict.
+
+Add `--dry-run` to save/print the command plan without building, installing, or
+launching simulations. After both batches finish, sync down the Isaac batch and
+use the comparison commands below, substituting the new `contract/`, `depth/`,
+and `live/` paths. Cross-machine comparisons and fresh Isaac-trace model replay
+require those downloaded results and are not performed by the independent runs.
+
 ## Isolation from your existing work
 
 All additions are under `diagnostics/observation_consistency/`. No existing source,
