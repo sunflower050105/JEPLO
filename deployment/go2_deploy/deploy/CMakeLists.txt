@@ -31,6 +31,13 @@ target_link_libraries(deploy PRIVATE
   ${ZMQ_LIBRARY}
 )
 
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(depth_frame_history_test tests/depth_frame_history_test.cpp)
+  target_include_directories(depth_frame_history_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  add_test(NAME depth_frame_history COMMAND depth_frame_history_test)
+endif()
+
 install(TARGETS deploy
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )

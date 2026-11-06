@@ -35,6 +35,7 @@ def instrument(source, source_hash):
             {"motor_joint_names",config_.motor_joint_names}, {"joint2motor_idx",config_.joint2motor_idx},
             {"sensor_size",config_.sensor_size}, {"control_dt",config_.control_dt},
             {"wm_update_interval",config_.wm_update_interval}, {"obs_clip",config_.obs_clip},
+            {"depth_history",config_.delayed_depth_history ? "delayed" : "legacy"},
             {"linear_scale",config_.lin_vel_scale}, {"angular_scale",config_.ang_vel_scale},
             {"joint_position_scale",config_.dof_pos_scale}, {"joint_velocity_scale",config_.dof_vel_scale},
             {"previous_action_scale",config_.action_obs_scale}, {"raw_actions",config_.use_raw_actions},
@@ -110,7 +111,7 @@ def main():
     target = out / "source"
     target.mkdir()
     (target / "src").mkdir()
-    for name in ("include",):
+    for name in ("include", "tests"):
         shutil.copytree(baseline / name, target / name)
     for path in (baseline / "src").iterdir():
         if path.is_file():
@@ -159,6 +160,7 @@ def main():
         out / "build_manifest.json",
         dict(
             source_sha256=sha256(baseline / "src/deploy.cpp"),
+            depth_history_header_sha256=sha256(baseline / "include/depth_frame_history.h"),
             instrumented_sha256=sha256(target / "src/deploy.cpp"),
             commands=commands,
             model_hashes={

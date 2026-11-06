@@ -53,6 +53,7 @@ which is included as part of this source code package.
 #include "zmq.hpp"
 
 #include "advanced_gamepad.hpp"
+#include "depth_frame_history.h"
 #include "imu_yaw_hold.h"
 
 // Unitree SDK headers
@@ -693,6 +694,7 @@ struct LocomotionConfig {
     // Sensor estimator dimensions are detected from the ONNX models at load time.
     // The recurrent state and policy feature can have different sizes.
     int wm_update_interval = 5;
+    bool delayed_depth_history = true;           // false retains the control-tick legacy pair
     int gru_hidden_dim = 768;                     // GRU hidden / hidden_out size
     int sensor_latent_dim = 768;                  // "feature" / policy `high_feat` size
     int policy_window = 5;                        // policy high_feat_window length
@@ -832,16 +834,18 @@ class RateMonitor {
     // Call with the depth stamps, the time JEPA started consuming them, and the JEPA Run() time.
     void OnEstimatorLatency(const DepthStamps &st, uint64_t consume_ns, double infer_ms) {
         win_infer_ms_.push_back(infer_ms);
-        // Depth history pair: identical frames (same arrival) or two distinct frames?
-        win_pairs_++;
-        all_pairs_++;
-        if (st.prev_seq == st.latest_seq) {
-            win_identical_++;
-            all_identical_++;
-        } else if (st.prev_scan_ns != 0 && st.scan_ns > st.prev_scan_ns) {
-            const double spacing_ms = (st.scan_ns - st.prev_scan_ns) / 1e6;
-            win_spacing_ms_.push_back(spacing_ms);
-            all_spacing_ms_.push_back(spacing_ms);
+        // Exclude startup padding (sequence 0) from duplicate-pair statistics.
+        if (st.prev_seq != 0 && st.latest_seq != 0) {
+            win_pairs_++;
+            all_pairs_++;
+            if (st.prev_seq == st.latest_seq) {
+                win_identical_++;
+                all_identical_++;
+            } else if (st.prev_scan_ns != 0 && st.scan_ns > st.prev_scan_ns) {
+                const double spacing_ms = (st.scan_ns - st.prev_scan_ns) / 1e6;
+                win_spacing_ms_.push_back(spacing_ms);
+                all_spacing_ms_.push_back(spacing_ms);
+            }
         }
         if (st.scan_ns == 0 || st.scan_ns > consume_ns) {
             return; // publisher sent no timestamp (or clocks disagree): age unknown
@@ -1091,6 +1095,7 @@ class LocomotionNode {
         depth_buffer_.resize(config_.sensor_size[0] * depth_pixels, 0.0f);  // C * H * W
         latest_depth_frame_.resize(depth_pixels, 0.0f);
         prev_depth_frame_.resize(depth_pixels, 0.0f);
+        depth_history_.reset(depth_pixels);
 
         LOG_INFO("Locomotion configuration loaded (WM)");
     }
@@ -1181,6 +1186,8 @@ class LocomotionNode {
                 std::memcpy(&latest_depth_scan_ns_, trailer, sizeof(uint64_t));
                 std::memcpy(&latest_depth_publish_ns_, trailer + sizeof(uint64_t), sizeof(uint64_t));
             }
+            depth_history_.push(data_ptr, latest_depth_seq_, latest_depth_scan_ns_,
+                                latest_depth_publish_ns_, latest_depth_recv_ns_);
             depth_frame_received_ = true;
         }
     }
@@ -1636,6 +1643,7 @@ class LocomotionNode {
         depth_buffer_.assign(static_cast<size_t>(channels) * depth_pixels, 0.0f);
         latest_depth_frame_.assign(depth_pixels, 0.0f);
         prev_depth_frame_.assign(depth_pixels, 0.0f);
+        depth_history_.reset(depth_pixels);
         depth_prev_initialized_ = false;
         depth_frame_received_ = false;
 
@@ -2186,25 +2194,41 @@ class LocomotionNode {
         std::vector<float> live_depth_stack(config_.sensor_size[0] * depth_pixels);
         {
             std::lock_guard<std::mutex> lock(depth_mutex_);
-            // Duplicate the latest frame when initializing the depth history.
-            if (!depth_prev_initialized_) {
+            if (config_.delayed_depth_history) {
+                // The receiver advances this ring only on a new completed image.
+                // Channel 0/1 are the older two; the newest image is delayed.
+                const auto &older = depth_history_.older();
+                const auto &newer = depth_history_.newer();
+                std::copy_n(older.pixels.begin(), depth_pixels, live_depth_stack.begin());
+                std::copy_n(newer.pixels.begin(), depth_pixels,
+                            live_depth_stack.begin() + depth_pixels);
+                estimator_prev_scan_ns_ = older.scan_ns;
+                estimator_prev_seq_ = older.seq;
+                estimator_latest_seq_ = newer.seq;
+                estimator_depth_scan_ns_ = newer.scan_ns;
+                estimator_depth_publish_ns_ = newer.publish_ns;
+                estimator_depth_recv_ns_ = newer.recv_ns;
+            } else {
+                // Baseline behavior for a paired trial: shift on every control tick.
+                if (!depth_prev_initialized_) {
+                    prev_depth_frame_ = latest_depth_frame_;
+                    prev_depth_scan_ns_ = latest_depth_scan_ns_;
+                    prev_depth_seq_ = latest_depth_seq_;
+                    depth_prev_initialized_ = true;
+                }
+                estimator_prev_scan_ns_ = prev_depth_scan_ns_;
+                estimator_prev_seq_ = prev_depth_seq_;
+                estimator_latest_seq_ = latest_depth_seq_;
+                estimator_depth_scan_ns_ = latest_depth_scan_ns_;
+                estimator_depth_publish_ns_ = latest_depth_publish_ns_;
+                estimator_depth_recv_ns_ = latest_depth_recv_ns_;
+                std::copy_n(prev_depth_frame_.begin(), depth_pixels, live_depth_stack.begin());
+                std::copy_n(latest_depth_frame_.begin(), depth_pixels,
+                            live_depth_stack.begin() + depth_pixels);
                 prev_depth_frame_ = latest_depth_frame_;
                 prev_depth_scan_ns_ = latest_depth_scan_ns_;
                 prev_depth_seq_ = latest_depth_seq_;
-                depth_prev_initialized_ = true;
             }
-            estimator_prev_scan_ns_ = prev_depth_scan_ns_;
-            estimator_prev_seq_ = prev_depth_seq_;
-            estimator_latest_seq_ = latest_depth_seq_;
-            estimator_depth_scan_ns_ = latest_depth_scan_ns_;
-            estimator_depth_publish_ns_ = latest_depth_publish_ns_;
-            estimator_depth_recv_ns_ = latest_depth_recv_ns_;
-            std::copy_n(prev_depth_frame_.begin(), depth_pixels, live_depth_stack.begin());
-            std::copy_n(
-                latest_depth_frame_.begin(), depth_pixels, live_depth_stack.begin() + depth_pixels);
-            prev_depth_frame_ = latest_depth_frame_;
-            prev_depth_scan_ns_ = latest_depth_scan_ns_;
-            prev_depth_seq_ = latest_depth_seq_;
         }
 
         std::copy(live_depth_stack.begin(), live_depth_stack.end(), depth_buffer_.begin());
@@ -2639,8 +2663,9 @@ class LocomotionNode {
     std::vector<float> depth_buffer_;       // (C*H*W) channels-first
     std::vector<float> latest_depth_frame_; // Latest frame from ZMQ
     std::vector<float> prev_depth_frame_;   // Previous depth frame
+    DepthFrameHistory depth_history_;       // Receiver-driven Isaac-style three-image history
     bool depth_prev_initialized_ = false;   // True after first depth stack is built
-    bool depth_frame_received_ = false;
+    std::atomic<bool> depth_frame_received_{false};
     std::atomic<bool> depth_size_mismatch_{false};
     // Timestamps of latest_depth_frame_ (system_clock ns; 0 = unknown). Guarded by depth_mutex_.
     uint64_t latest_depth_scan_ns_ = 0;    // newest scan inside the frame (publisher clock)
@@ -2710,6 +2735,8 @@ int main(int argc, char *argv[]) {
         "depth-port", "ZMQ depth subscriber port", cxxopts::value<int>()->default_value("5560"))(
         "depth-host", "ZMQ depth subscriber host",
         cxxopts::value<std::string>()->default_value("localhost"))(
+        "depth-history", "Depth history: delayed (Isaac-style) or legacy (control-tick pair)",
+        cxxopts::value<std::string>())(
         "cmd-port", "ZMQ command subscriber port", cxxopts::value<int>()->default_value("5562"))(
         "cmd-host", "ZMQ command subscriber host (controller IP)",
         cxxopts::value<std::string>()->default_value("localhost"))(
@@ -2824,6 +2851,16 @@ int main(int argc, char *argv[]) {
     // ZMQ ports from CLI
     config.depth_sub_port = args["depth-port"].as<int>();
     config.depth_sub_host = args["depth-host"].as<std::string>();
+    const auto depth_history_mode = args.count("depth-history") > 0
+        ? args["depth-history"].as<std::string>()
+        : (config.use_sim ? std::string("delayed") : std::string("legacy"));
+    if (depth_history_mode != "delayed" && depth_history_mode != "legacy") {
+        LOG_ERROR("Invalid --depth-history '%s'; expected 'delayed' or 'legacy'",
+                  depth_history_mode.c_str());
+        return 1;
+    }
+    config.delayed_depth_history = depth_history_mode == "delayed";
+    fmt::print("Depth history: {}\n", depth_history_mode);
     config.cmd_sub_port = args["cmd-port"].as<int>();
     config.cmd_sub_host = args["cmd-host"].as<std::string>();
     config.use_raw_actions = args.count("raw-actions") > 0;

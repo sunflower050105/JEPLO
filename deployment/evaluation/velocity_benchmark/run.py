@@ -112,6 +112,8 @@ def commands(args, trial, speed, seed, occlusion=None):
         depth.extend(["--benchmark-mask-file", str(trial / "occlusion_mask.pgm")])
     policy = [str(args.deploy_bin), "--net", "lo", "--model-dir", args.model_dir,
               "--ood-count-threshold", "15", "--raw-actions", "--trt-cache"]
+    if args.depth_history is not None:
+        policy.extend(["--depth-history", args.depth_history])
     if args.terrain == "benchmark_stairs" and not args.no_stair_yaw_hold:
         policy.extend(["--imu-yaw-hold", "--yaw-hold-kp", str(args.yaw_hold_kp),
                        "--yaw-hold-kd", str(args.yaw_hold_kd),
@@ -456,6 +458,8 @@ def parser():
     p.add_argument("--min-progress-ratio", type=float, default=0.8)
     p.add_argument("--seed", type=int, default=0, help="Cage mask seed; incremented per pair")
     p.add_argument("--model-dir", default="my_policy_r2")
+    p.add_argument("--depth-history", choices=["delayed", "legacy"],
+                   help="Controller depth-history mode; omit for the controller default")
     p.add_argument("--fov", choices=["25x60", "25x90", "25x120"], default="25x60")
     p.add_argument("--lidar-hz", type=float, default=20)
     p.add_argument("--stacked-frames", type=int, default=5)

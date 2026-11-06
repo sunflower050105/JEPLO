@@ -246,6 +246,7 @@ def run_mujoco(repo, out, f, compiler, eigen_include):
 #include <vector>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
+#include "depth_frame_history.h"
 #include "json.hpp"
 using namespace Eigen;
 using json = nlohmann::json;
@@ -269,6 +270,7 @@ int main(int argc, char **argv) {
   LowState low_state_;
   std::vector<float> proprio_obs_(45), prop_hist_(450), raw_action_(12), depth_buffer_(3000);
   std::vector<float> prev_depth_frame_(1500), latest_depth_frame_(1500);
+  DepthFrameHistory depth_history_(1500);
   bool depth_prev_initialized_=false;
   uint64_t prev_depth_scan_ns_=0, latest_depth_scan_ns_=0, prev_depth_seq_=0, latest_depth_seq_=0;
   uint64_t estimator_prev_scan_ns_=0, estimator_prev_seq_=0, estimator_latest_seq_=0;
@@ -290,8 +292,12 @@ int main(int argc, char **argv) {
     auto gravity_orientation=get_gravity_orientation_eigen(quat);
     auto ang_vel=r["gyro"].get<std::array<float,3>>();
     for(int i=0;i<3;++i) cmd_[i]=r["command"][i].get<float>();
-    latest_depth_seq_=r["depth_id"].get<uint64_t>();
-    std::fill(latest_depth_frame_.begin(),latest_depth_frame_.end(),latest_depth_seq_/100.f);
+    const auto incoming_depth_seq=r["depth_id"].get<uint64_t>();
+    if (incoming_depth_seq != latest_depth_seq_) {
+      latest_depth_seq_=incoming_depth_seq;
+      std::fill(latest_depth_frame_.begin(),latest_depth_frame_.end(),latest_depth_seq_/100.f);
+      depth_history_.push(latest_depth_frame_.data(),latest_depth_seq_,0,0,0);
+    }
     @PACK@
     @DEPTH@
     output.write(reinterpret_cast<const char*>(prop_hist_.data()),450*sizeof(float));
@@ -367,7 +373,7 @@ def main():
     }
     checks["proprio_history_newest_first"] = error_metrics(hist, reference_hist)
     np.savez_compressed(out / "observations.npz", proprio_hist=hist, depth_stack=depth)
-    paths = [ENV, CFG] if a.side == "isaac" else [DEPLOY]
+    paths = [ENV, CFG] if a.side == "isaac" else [DEPLOY, "deployment/go2_deploy/deploy/include/depth_frame_history.h"]
     report = dict(
         side=a.side,
         fixture_sha256=sha256(out / "fixtures.json"),

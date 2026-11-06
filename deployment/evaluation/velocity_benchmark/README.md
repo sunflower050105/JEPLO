@@ -10,6 +10,14 @@ proprioception, depth, and recurrent state. Repeated trials restart the simulato
 depth publisher, and controller, so their histories are fresh. **Video replay**
 only renders the recorded trajectory; it does not replay actions or rerun physics.
 
+For the depth-history experiment, rebuild the deployment controller and use
+`--depth-history delayed` for the receiver-driven three-image history or
+`--depth-history legacy` for the previous control-tick pairing. The runner
+forwards this option to the controller. When omitted, the updated controller
+defaults to `delayed` for loopback simulation and `legacy` for hardware. Keep
+every other trial setting equal
+when comparing the modes.
+
 This folder owns the runner, scoring implementation, tests, and video renderer.
 It builds separate `unitree_mujoco_velocity` and `lidar_depth_velocity` executables.
 The default simulator executable and the earlier see-then-hidden experiment
