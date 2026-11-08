@@ -17,11 +17,11 @@ struct DepthHistoryFrame {
     uint64_t seq = 0;
 };
 
-// Mirrors Isaac's [older, newer, delayed] buffer. A control tick only reads the
-// history; every accepted image advances it once, even if several arrive
-// between control ticks. With one image the estimator sees [padding, padding];
-// with two it sees [padding, first]; after warmup it sees two distinct arrival
-// IDs. Distinct IDs do not guarantee different pixel contents.
+// Stores [older, newer, newest]. A control tick only reads the history; every
+// accepted image advances it once, even if several arrive between control
+// ticks. Delayed mode selects [older, newer], matching Isaac's depth_delay=1;
+// latest-two mode selects [newer, newest]. Distinct IDs do not guarantee
+// different pixel contents.
 class DepthFrameHistory {
   public:
     explicit DepthFrameHistory(std::size_t pixels = 0) { reset(pixels); }
@@ -48,6 +48,7 @@ class DepthFrameHistory {
 
     const DepthHistoryFrame &older() const { return frames_[0]; }
     const DepthHistoryFrame &newer() const { return frames_[1]; }
+    const DepthHistoryFrame &newest() const { return frames_[2]; }
 
   private:
     std::size_t pixels_ = 0;

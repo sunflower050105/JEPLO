@@ -1,7 +1,8 @@
 # Next experiment: MuJoCo depth history
 
 Recorded 2026-11-05; first controller change implemented locally 2026-11-06.
-The policy weights are unchanged. Paired live success trials have not yet run.
+The policy weights are unchanged. Paired legacy/delayed trials completed on
+2026-11-06; the latest-two trial is pending.
 
 ## Hypothesis
 
@@ -10,6 +11,12 @@ Isaac training. Isaac keeps three completed images with `depth_delay = 1` and
 supplies the older two to the estimator. MuJoCo currently pairs the latest
 published image with the image seen on the previous 50 Hz control tick. That
 pair can contain the same completed image twice.
+
+The [JEPLO paper](https://arxiv.org/html/2609.15770v1) lists a 0.1 s depth
+delay in its domain-randomization table, but gives a single fixed value. The
+training code sets `depth_delay = 1` with a 10 Hz depth update and does not
+sample the delay. Thus this controller comparison tests the fixed training
+delay against fresher received frames, not a sampled delay distribution.
 
 The deterministic Check 1A cross-comparison found a depth-history mismatch of
 0.02 normalized units at tick 41: Isaac frame IDs `[7, 8]` versus MuJoCo
@@ -61,15 +68,33 @@ trial cannot establish the typical duplicate rate.
    scan receipt versus image completion explains an additional smaller offset.
    It is a scheduling/phase observation from this one run, not a reason to
    change the selection rule without paired evaluation.
-4. Run paired baseline and changed-controller velocity trials at 0.8 and
-   1.0 m/s, retaining controller diagnostics. Compare success, duplicate-ID
-   fraction, channel ages, publisher cadence, real-time factor, and safety
-   faults. Do not change the policy model or scan settings in this comparison.
+4. **Paired velocity trials completed:** With 100 valid trials per speed and
+   mode, legacy succeeded in 82/100 at 0.8 m/s and 61/100 at 1.0 m/s; delayed
+   succeeded in 69/100 and 65/100. Both runs used the same model, binaries,
+   terrain, scan settings, and seeds. Across controller logs, legacy fed the
+   same image ID in both channels in 83.2% of estimator calls at 0.8 m/s and
+   85.2% at 1.0 m/s; delayed did so in 0%. Median selected newer-channel
+   scan-to-estimator age across trials rose from about 59 to 166 ms at 0.8 m/s
+   and 66 to 161 ms at 1.0 m/s. All trials passed the runner's timing check.
+   Results: `deployment/evaluation/velocity_benchmark/runs/depth-history-legacy-20261106-151917/`
+   and `deployment/evaluation/velocity_benchmark/runs/depth-history-delayed-20261106-165901/`.
+   These runs show that eliminating duplicate IDs with an extra held-back frame
+   did not improve success at both speeds. Distinct IDs do not establish
+   distinct pixel content, and speed-specific success differences do not prove
+   which policy input caused them.
+5. **Next experiment implemented:** `--depth-history latest-two` advances only
+   on received completed images and feeds the two most recent distinct image
+   IDs, without holding the newest image back. Run it with the same benchmark
+   settings and compare success and age against both completed modes. An
+   8-simulation-second local smoke run recorded 0/101 duplicate-ID pairs,
+   about 101 ms channel spacing, and about 49 ms selected newer-channel
+   scan-to-estimator age. It timed out under that shortened limit, so it is
+   not a success-rate result. Smoke output:
+   `deployment/evaluation/velocity_benchmark/runs/latest-two-smoke-20261108-184238/`.
 
-This tests policy effectiveness, not only computational efficiency. Added delay
-may remove duplicated channels but also makes both images older; success can
-improve, stay unchanged, or worsen. Decide whether to retain the change from
-the paired results, then rerun the policy evaluation.
+This tests policy effectiveness, not only computational efficiency. Latest-two
+isolates image-ID duplication from the added one-frame delay, while differing
+from the fixed delayed history used in Isaac training.
 
 ## Other diagnostic findings to discuss
 

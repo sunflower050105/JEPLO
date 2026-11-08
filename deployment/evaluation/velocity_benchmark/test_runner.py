@@ -74,6 +74,12 @@ class ProtocolTests(unittest.TestCase):
         self.assertNotIn("--no-cage-mask", first["depth"])
         self.assertNotIn("--imu-yaw-hold", first["deploy"])
 
+    def test_latest_two_mode_is_forwarded_to_controller(self):
+        args = run.parser().parse_args(["--depth-history", "latest-two"])
+        args.duration = 8.0
+        command = run.commands(args, Path("/tmp/latest_two"), 0.8, 17)["deploy"]
+        self.assertEqual(command[command.index("--depth-history") + 1], "latest-two")
+
     def test_box_task_default_and_legacy_selection(self):
         for task, rule in (("ascent", "box_ascent_v2"), ("traverse", "box_traverse_v1")):
             options = ["--terrain", "boxes"]

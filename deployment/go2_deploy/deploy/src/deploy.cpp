@@ -694,7 +694,7 @@ struct LocomotionConfig {
     // Sensor estimator dimensions are detected from the ONNX models at load time.
     // The recurrent state and policy feature can have different sizes.
     int wm_update_interval = 5;
-    bool delayed_depth_history = true;           // false retains the control-tick legacy pair
+    std::string depth_history_mode = "delayed";  // legacy, delayed, or latest-two
     int gru_hidden_dim = 768;                     // GRU hidden / hidden_out size
     int sensor_latent_dim = 768;                  // "feature" / policy `high_feat` size
     int policy_window = 5;                        // policy high_feat_window length
@@ -2194,11 +2194,13 @@ class LocomotionNode {
         std::vector<float> live_depth_stack(config_.sensor_size[0] * depth_pixels);
         {
             std::lock_guard<std::mutex> lock(depth_mutex_);
-            if (config_.delayed_depth_history) {
+            if (config_.depth_history_mode != "legacy") {
                 // The receiver advances this ring only on a new completed image.
-                // Channel 0/1 are the older two; the newest image is delayed.
-                const auto &older = depth_history_.older();
-                const auto &newer = depth_history_.newer();
+                // Delayed holds the newest image back; latest-two uses it now.
+                const auto &older = config_.depth_history_mode == "latest-two"
+                    ? depth_history_.newer() : depth_history_.older();
+                const auto &newer = config_.depth_history_mode == "latest-two"
+                    ? depth_history_.newest() : depth_history_.newer();
                 std::copy_n(older.pixels.begin(), depth_pixels, live_depth_stack.begin());
                 std::copy_n(newer.pixels.begin(), depth_pixels,
                             live_depth_stack.begin() + depth_pixels);
@@ -2735,7 +2737,7 @@ int main(int argc, char *argv[]) {
         "depth-port", "ZMQ depth subscriber port", cxxopts::value<int>()->default_value("5560"))(
         "depth-host", "ZMQ depth subscriber host",
         cxxopts::value<std::string>()->default_value("localhost"))(
-        "depth-history", "Depth history: delayed (Isaac-style) or legacy (control-tick pair)",
+        "depth-history", "Depth history: delayed (Isaac-style), latest-two, or legacy",
         cxxopts::value<std::string>())(
         "cmd-port", "ZMQ command subscriber port", cxxopts::value<int>()->default_value("5562"))(
         "cmd-host", "ZMQ command subscriber host (controller IP)",
@@ -2854,12 +2856,13 @@ int main(int argc, char *argv[]) {
     const auto depth_history_mode = args.count("depth-history") > 0
         ? args["depth-history"].as<std::string>()
         : (config.use_sim ? std::string("delayed") : std::string("legacy"));
-    if (depth_history_mode != "delayed" && depth_history_mode != "legacy") {
-        LOG_ERROR("Invalid --depth-history '%s'; expected 'delayed' or 'legacy'",
+    if (depth_history_mode != "delayed" && depth_history_mode != "latest-two" &&
+        depth_history_mode != "legacy") {
+        LOG_ERROR("Invalid --depth-history '%s'; expected 'delayed', 'latest-two', or 'legacy'",
                   depth_history_mode.c_str());
         return 1;
     }
-    config.delayed_depth_history = depth_history_mode == "delayed";
+    config.depth_history_mode = depth_history_mode;
     fmt::print("Depth history: {}\n", depth_history_mode);
     config.cmd_sub_port = args["cmd-port"].as<int>();
     config.cmd_sub_host = args["cmd-host"].as<std::string>();

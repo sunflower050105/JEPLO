@@ -11,8 +11,9 @@ depth publisher, and controller, so their histories are fresh. **Video replay**
 only renders the recorded trajectory; it does not replay actions or rerun physics.
 
 For the depth-history experiment, rebuild the deployment controller and use
-`--depth-history delayed` for the receiver-driven three-image history or
-`--depth-history legacy` for the previous control-tick pairing. The runner
+`--depth-history delayed` for the receiver-driven three-image history,
+`--depth-history latest-two` for the two most recent completed received images,
+or `--depth-history legacy` for the previous control-tick pairing. The runner
 forwards this option to the controller. When omitted, the updated controller
 defaults to `delayed` for loopback simulation and `legacy` for hardware. Keep
 every other trial setting equal

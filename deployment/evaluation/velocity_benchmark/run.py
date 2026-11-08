@@ -458,7 +458,7 @@ def parser():
     p.add_argument("--min-progress-ratio", type=float, default=0.8)
     p.add_argument("--seed", type=int, default=0, help="Cage mask seed; incremented per pair")
     p.add_argument("--model-dir", default="my_policy_r2")
-    p.add_argument("--depth-history", choices=["delayed", "legacy"],
+    p.add_argument("--depth-history", choices=["delayed", "latest-two", "legacy"],
                    help="Controller depth-history mode; omit for the controller default")
     p.add_argument("--fov", choices=["25x60", "25x90", "25x120"], default="25x60")
     p.add_argument("--lidar-hz", type=float, default=20)
