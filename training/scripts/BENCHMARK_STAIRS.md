@@ -35,15 +35,21 @@ centering. No
 startup mass/COM randomization, pushes, joint offset, or reset pose randomization
 is applied. The policy's trained depth observation path remains in use.
 
-Success requires all four foot body origins inside and near the top landing,
+Success requires all four feet (spheres of radius 0.022 m) inside the top landing
+and no lower than 3 cm below its top, with no upper height limit, as in MuJoCo;
 recent force-sensor contact for all feet, the base over the landing and at
 least 0.16 m above it, tilt at most 30 degrees, and a 0.2 s continuous hold.
 A fall (base below 0.16 m or tilt above 60 degrees for 0.2 s) and leaving the
 0.8 m half-width corridor take precedence. The default deadline is 16 simulated
-seconds; use `--duration` to change it. This is labelled `stair_landing_isaac_contact_proxy_v1` because Isaac
+seconds; use `--duration` to change it. This is labelled `stair_landing_isaac_contact_proxy_v2` because Isaac
 reports foot contact forces without the landing-geom and contact-normal detail
 that the MuJoCo `stair_landing_v1` scorer uses. The landing footprint, height,
 posture, and hold thresholds match; the contact test is an approximation.
+
+v1 of this rule (used before 2026-11-10) also required each foot to be within
+7 cm above the landing top. Normal swing broke the 0.2 s hold, so many robots
+climbed the stairs and ran off the landing without scoring. Do not compare v1
+and v2 success rates directly; `scoring_rule` in `metadata.json` says which applied.
 
 The output directory contains `metadata.json` (including checkpoint hash),
 `trials.csv` (flushed after every trial), and `summary.json` (per-speed success
@@ -107,7 +113,7 @@ in `trials.csv` and one summary row per pattern and speed.
 The mask is sampled independently from a recorded `mask_seed` at trial start
 and held fixed throughout that trial. `masked_fraction` records its actual
 coverage. Blob is three overlapping rounded patches, Cross is an X, Cut is
-a large diagonal right-hand loss, and Stripe is two vertical bands. Pixels
+a large diagonal right-hand loss widest in the far (low-index) rows, and Stripe is two vertical bands. Pixels
 under a mask become normalized depth 1.0 (no return) in **every frame of the
 policy's depth stack**. The stair physics, command, student policy, LiDAR
 projection, Gaussian noise, bottom-row dropout, temporal scan accumulation,
@@ -116,7 +122,9 @@ task's additional random-shape and Perlin masks are disabled for all five
 conditions so the selected pattern is the only occlusion difference.
 
 The four masks approximate Fig. 5(a-d) of the [JEPLO paper](https://arxiv.org/html/2609.15770);
-its exact mask generator parameters are not published. Thus these results
+its exact mask generator parameters are not published. The paper draws depth
+images with array row 24 at the top; generator v2 (2026-11-10) mirrors the cut
+vertically to account for this, and v1 had blanked mostly the near-ground rows. Thus these results
 measure robustness to the pictured pattern families, not exact replication
 of the paper's occlusion test. The earlier default stair benchmark retains
 its original depth augmentation and output format when

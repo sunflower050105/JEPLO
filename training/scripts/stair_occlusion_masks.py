@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 
 PATTERNS = ("standard", "blob", "cross", "cut", "stripe")
+ALGORITHM = "isaac_stair_occlusion_masks_v2"
 
 
 def make_mask(pattern: str, height: int, width: int, seed: int) -> np.ndarray:
@@ -48,8 +49,14 @@ def make_mask(pattern: str, height: int, width: int, seed: int) -> np.ndarray:
         )
 
     if pattern == "cut":
-        # Large diagonal right-hand loss, matching the paper's cut example.
-        boundary = rng.uniform(0.03, 0.17) - rng.uniform(0.25, 0.38) * y
+        # Large diagonal right-hand loss matching Fig. 5(c), about 45% of the
+        # image. The paper draws depth images with array row 24 (the near-
+        # ground row beside the robot body) at the top, so its cut, wider at
+        # the bottom of the figure, is wider at the far rows (low row index)
+        # of this array. v1 omitted that flip and blanked mostly the near-
+        # ground rows that show the next steps. Same RNG draws as v1, so a
+        # given seed gives the exact vertical mirror of the v1 mask.
+        boundary = rng.uniform(0.03, 0.17) + rng.uniform(0.25, 0.38) * y
         return x >= boundary
 
     # Two vertical bands similar to the physical sensor-cage pillars.
